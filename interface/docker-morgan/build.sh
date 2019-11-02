@@ -16,7 +16,7 @@ fi
 cd "$(dirname "$0")"
 rm -rf usr/
 ../../ci/docker-run.sh "$rust_stable_docker_image" \
-  scripts/cargo-install-all.sh sdk/docker-morgan/usr
+  scripts/cargo-install-all.sh interface/docker-morgan/usr
 
 cp -f ../../run.sh usr/bin/morgan-run.sh
 
