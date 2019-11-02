@@ -31,9 +31,9 @@ SECONDS=0
 
 BIN_CRATES=(
   bench-exchange
-  bench-streamer
-  bench-tps
-  drone
+  bench-streamerbot
+  benchbot
+  tokenbot
   genesis
   gossip
   install
