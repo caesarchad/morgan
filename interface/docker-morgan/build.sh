@@ -3,9 +3,9 @@ set -ex
 
 cd "$(dirname "$0")"/../..
 #eval "$(ci/channel-info.sh)"
-source ci/rust-version.sh
 
 CHANNEL=beta
+rust_stable_docker_image=solanalabs/rust:1.35.0
 
 if [[ -z $CHANNEL ]]; then
   echo Unable to determine channel to publish into, exiting.
