@@ -5,6 +5,8 @@ cd "$(dirname "$0")"/../..
 eval "$(ci/channel-info.sh)"
 source ci/rust-version.sh
 
+CHANNEL=beta
+
 if [[ -z $CHANNEL ]]; then
   echo Unable to determine channel to publish into, exiting.
   echo "^^^ +++"
@@ -18,7 +20,7 @@ rm -rf usr/
 
 cp -f ../../run.sh usr/bin/morgan-run.sh
 
-docker build -t aya015757881/morgan:"$CHANNEL" .
+docker build -t aya015757881/testdocker:"$CHANNEL" .
 
 maybeEcho=
 if [[ -z $CI ]]; then
