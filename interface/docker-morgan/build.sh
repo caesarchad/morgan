@@ -34,4 +34,4 @@ else
     fi
   )
 fi
-$maybeEcho docker push aya015757881/morgan:"$CHANNEL"
+$maybeEcho docker push aya015757881/testdocker:"$CHANNEL"
