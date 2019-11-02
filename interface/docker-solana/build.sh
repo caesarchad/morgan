@@ -2,7 +2,7 @@
 set -ex
 
 cd "$(dirname "$0")"/../..
-eval "$(ci/channel-info.sh)"
+#eval "$(ci/channel-info.sh)"
 source ci/rust-version.sh
 
 CHANNEL=beta
