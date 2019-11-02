@@ -18,7 +18,7 @@ rm -rf usr/
 
 cp -f ../../run.sh usr/bin/morgan-run.sh
 
-docker build -t morganlabs/morgan:"$CHANNEL" .
+docker build -t aya015757881/morgan:"$CHANNEL" .
 
 maybeEcho=
 if [[ -z $CI ]]; then
@@ -32,4 +32,4 @@ else
     fi
   )
 fi
-$maybeEcho docker push morganlabs/morgan:"$CHANNEL"
+$maybeEcho docker push aya015757881/morgan:"$CHANNEL"
