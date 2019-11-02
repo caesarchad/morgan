@@ -2,7 +2,7 @@
 #
 # |cargo install| of the top-level crate will not install binaries for
 # other workspace crates or native program crates.
-set -e
+set -ex
 
 export rust_version=
 if [[ $1 =~ \+ ]]; then

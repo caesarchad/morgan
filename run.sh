@@ -12,7 +12,7 @@ cd "$(dirname "$0")/"
 PATH=$PWD/target/debug:$PATH
 
 ok=true
-for program in morgan-{drone,genesis,keybot,validator}; do
+for program in morgan-{tokenbot,genesis,keybot,validator}; do
   $program -V || ok=false
 done
 $ok || {
