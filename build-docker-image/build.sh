@@ -6,7 +6,6 @@ rust_stable_docker_image=solanalabs/rust:1.35.0
 
 cd "$(dirname "$0")"
 rm -rf usr/
-rm -rf influx_db/
 
 cd ..
 docker pull $rust_stable_docker_image
