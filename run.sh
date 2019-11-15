@@ -5,9 +5,15 @@
 # Before running this script ensure standard Morgan programs are available
 # in the PATH, or that `cargo build --all` ran successfully
 #
-set -e
-
 # Prefer possible `cargo build --all` binaries over PATH binaries
+
+set -ex
+
+service influxdb start
+sleep 5s
+influx -execute 'CREATE DATABASE Tokens'
+sleep 5s
+
 cd "$(dirname "$0")/"
 PATH=$PWD/target/debug:$PATH
 
