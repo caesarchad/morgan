@@ -56,6 +56,7 @@ cd "$(dirname "$0")"
 cp -f ../run.sh usr/bin/morgan-run.sh
 
 docker build -t aya015757881/testdocker:"$CHANNEL" .
+rm -rf usr/
 
 maybeEcho=
 if [[ -z $CI ]]; then
