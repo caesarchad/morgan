@@ -12,7 +12,7 @@ set -ex
 service influxdb start
 sleep 5s
 influx -execute 'CREATE DATABASE Tokens'
-sleep 5s
+sleep 2s
 
 cd "$(dirname "$0")/"
 PATH=$PWD/target/debug:$PATH
