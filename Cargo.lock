@@ -1444,7 +1444,7 @@ dependencies = [
  "morgan-interface 0.15.3",
  "morgan-kvstore 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-netutil 0.15.3",
  "morgan-runtime 0.15.3",
  "morgan-stake-api 0.15.3",
@@ -1488,7 +1488,7 @@ dependencies = [
  "morgan-exchange-controller 0.15.3",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-netutil 0.15.3",
  "morgan-runtime 0.15.3",
  "morgan-tokenbot 0.15.3",
@@ -1504,7 +1504,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "morgan-bench-streamer"
+name = "morgan-bench-streamerbot"
 version = "0.15.3"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1523,7 +1523,7 @@ dependencies = [
  "morgan-client 0.15.3",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-netutil 0.15.3",
  "morgan-runtime 0.15.3",
  "morgan-tokenbot 0.15.3",
@@ -1634,7 +1634,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-runtime 0.15.3",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1794,7 +1794,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "morgan-metrics"
+name = "morgan-metricbot"
 version = "0.15.3"
 dependencies = [
  "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1856,7 +1856,7 @@ dependencies = [
  "memmap 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-noop-controller 0.15.3",
  "morgan-stake-api 0.15.3",
  "morgan-stake-controller 0.15.3",
@@ -1877,7 +1877,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-vote-api 0.15.3",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1952,7 +1952,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.20 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1964,7 +1964,7 @@ name = "morgan-upload-perf"
 version = "0.15.3"
 dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1977,7 +1977,7 @@ dependencies = [
  "morgan 0.15.3",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "morgan-netutil 0.15.3",
  "morgan-runtime 0.15.3",
  "morgan-tokenbot 0.15.3",
@@ -1994,7 +1994,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
  "morgan-logger 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2020,7 +2020,7 @@ dependencies = [
  "jsonrpc-http-server 11.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "morgan-interface 0.15.3",
- "morgan-metrics 0.15.3",
+ "morgan-metricbot 0.15.3",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
