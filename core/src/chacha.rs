@@ -1,4 +1,4 @@
-use crate::blocktree::Blocktree;
+use crate::blockBufferPool::Blocktree;
 use morgan_storage_api::SLOTS_PER_SEGMENT;
 use std::fs::File;
 use std::io;
@@ -70,7 +70,14 @@ pub fn chacha_cbc_encrypt_ledger(
 
                 chacha_cbc_encrypt(&buffer[..size], &mut encrypted_buffer[..size], &key, ivec);
                 if let Err(res) = out_file.write(&encrypted_buffer[..size]) {
-                    warn!("Error writing file! {:?}", res);
+                    // warn!("Error writing file! {:?}", res);
+                    println!(
+                        "{}",
+                        Warn(
+                            format!("Error writing file! {:?}", res).to_string(),
+                            module_path!().to_string()
+                        )
+                    );
                     return Err(res);
                 }
 
@@ -78,7 +85,14 @@ pub fn chacha_cbc_encrypt_ledger(
                 entry += num_entries;
             }
             Err(e) => {
-                info!("Error encrypting file: {:?}", e);
+                // info!("{}", Info(format!("Error encrypting file: {:?}", e).to_string()));
+                let loginfo: String = format!("Error encrypting file: {:?}", e).to_string();
+                println!("{}",
+                    printLn(
+                        loginfo,
+                        module_path!().to_string()
+                    )
+                );
                 break;
             }
         }
@@ -88,11 +102,11 @@ pub fn chacha_cbc_encrypt_ledger(
 
 #[cfg(test)]
 mod tests {
-    use crate::blocktree::get_tmp_ledger_path;
-    use crate::blocktree::Blocktree;
+    use crate::blockBufferPool::get_tmp_ledger_path;
+    use crate::blockBufferPool::Blocktree;
     use crate::chacha::chacha_cbc_encrypt_ledger;
-    use crate::entry::Entry;
-    use crate::gen_keys::GenKeys;
+    use crate::entryInfo::Entry;
+    use crate::createKeys::GenKeys;
     use morgan_interface::hash::{hash, Hash, Hasher};
     use morgan_interface::signature::KeypairUtil;
     use morgan_interface::system_transaction;

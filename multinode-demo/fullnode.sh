@@ -39,7 +39,7 @@ find_entrypoint() {
   declare shift=0
 
   if [[ -z $1 ]]; then
-    entrypoint="$SOLANA_ROOT"         # Default to local tree for rsync
+    entrypoint="$MORGAN_ROOT"         # Default to local tree for rsync
     entrypoint_address=127.0.0.1:10001 # Default to local entrypoint
   elif [[ -z $2 ]]; then
     entrypoint=$1
@@ -83,15 +83,19 @@ setup_validator_accounts() {
 
   declare node_pubkey
   node_pubkey=$($morgan_keybot pubkey "$node_keypair_path")
+  # node_pubkey=$(morgan-keybot pubkey "$node_keypair_path")
 
   declare vote_pubkey
   vote_pubkey=$($morgan_keybot pubkey "$vote_keypair_path")
+  # # vote_pubkey=$(morgan-keybot pubkey "$vote_keypair_path")
 
   declare stake_pubkey
   stake_pubkey=$($morgan_keybot pubkey "$stake_keypair_path")
+  # stake_pubkey=$(morgan-keybot pubkey "$stake_keypair_path")
 
   declare storage_pubkey
   storage_pubkey=$($morgan_keybot pubkey "$storage_keypair_path")
+  # storage_pubkey=$(morgan-keybot pubkey "$storage_keypair_path")
 
   if [[ -f $configured_flag ]]; then
     echo "Vote and stake accounts have already been configured"
@@ -245,12 +249,12 @@ if [[ $node_type = replicator ]]; then
   read -r entrypoint entrypoint_address shift < <(find_entrypoint "${positional_args[@]}")
   shift "$shift"
 
-  : "${identity_keypair_path:=$SOLANA_CONFIG_DIR/replicator-keypair$label.json}"
-  storage_keypair_path="$SOLANA_CONFIG_DIR"/replicator-storage-keypair$label.json
-  ledger_config_dir=$SOLANA_CONFIG_DIR/replicator-ledger$label
-  configured_flag=$SOLANA_CONFIG_DIR/replicator$label.configured
+  : "${identity_keypair_path:=$MORGAN_CONFIG_DIR/replicator-keypair$label.json}"
+  storage_keypair_path="$MORGAN_CONFIG_DIR"/replicator-storage-keypair$label.json
+  ledger_config_dir=$MORGAN_CONFIG_DIR/replicator-ledger$label
+  configured_flag=$MORGAN_CONFIG_DIR/replicator$label.configured
 
-  mkdir -p "$SOLANA_CONFIG_DIR"
+  mkdir -p "$MORGAN_CONFIG_DIR"
   [[ -r "$identity_keypair_path" ]] || $morgan_keybot -o "$identity_keypair_path"
   [[ -r "$storage_keypair_path" ]] || $morgan_keybot -o "$storage_keypair_path"
 
@@ -261,9 +265,10 @@ if [[ $node_type = replicator ]]; then
 ======================[ $node_type configuration ]======================
 replicator pubkey: $identity_pubkey
 storage pubkey: $storage_pubkey
-ledger: $ledger_config_dir
+ledger path: $ledger_config_dir
 ======================================================================
 EOF
+  # program=morgan-replicator
   program=$morgan_replicator
   default_arg --entrypoint "$entrypoint_address"
   default_arg --identity "$identity_keypair_path"
@@ -275,17 +280,17 @@ elif [[ $node_type = bootstrap_leader ]]; then
     fullnode_usage "Unknown argument: ${positional_args[0]}"
   fi
 
-  [[ -f "$SOLANA_CONFIG_DIR"/bootstrap-leader-keypair.json ]] ||
-    ledger_not_setup "$SOLANA_CONFIG_DIR/bootstrap-leader-keypair.json not found"
+  [[ -f "$MORGAN_CONFIG_DIR"/bootstrap-leader-keypair.json ]] ||
+    ledger_not_setup "$MORGAN_CONFIG_DIR/bootstrap-leader-keypair.json not found"
 
-  #$morgan_ledgerbot --ledger "$SOLANA_CONFIG_DIR"/bootstrap-leader-ledger verify
+  $morgan_ledgerbot --ledger "$MORGAN_CONFIG_DIR"/bootstrap-leader-ledger verify
 
-  : "${identity_keypair_path:=$SOLANA_CONFIG_DIR/bootstrap-leader-keypair.json}"
-  vote_keypair_path="$SOLANA_CONFIG_DIR"/bootstrap-leader-vote-keypair.json
-  ledger_config_dir="$SOLANA_CONFIG_DIR"/bootstrap-leader-ledger
-  accounts_config_dir="$SOLANA_CONFIG_DIR"/bootstrap-leader-accounts
-  storage_keypair_path=$SOLANA_CONFIG_DIR/bootstrap-leader-storage-keypair.json
-  configured_flag=$SOLANA_CONFIG_DIR/bootstrap-leader.configured
+  : "${identity_keypair_path:=$MORGAN_CONFIG_DIR/bootstrap-leader-keypair.json}"
+  vote_keypair_path="$MORGAN_CONFIG_DIR"/bootstrap-leader-vote-keypair.json
+  ledger_config_dir="$MORGAN_CONFIG_DIR"/bootstrap-leader-ledger
+  accounts_config_dir="$MORGAN_CONFIG_DIR"/bootstrap-leader-accounts
+  storage_keypair_path=$MORGAN_CONFIG_DIR/bootstrap-leader-storage-keypair.json
+  configured_flag=$MORGAN_CONFIG_DIR/bootstrap-leader.configured
 
   default_arg --rpc-port 10099
   default_arg --rpc-drone-address 127.0.0.1:11100
@@ -299,15 +304,22 @@ elif [[ $node_type = validator ]]; then
   read -r entrypoint entrypoint_address shift < <(find_entrypoint "${positional_args[@]}")
   shift "$shift"
 
-  : "${identity_keypair_path:=$SOLANA_CONFIG_DIR/validator-keypair$label.json}"
-  vote_keypair_path=$SOLANA_CONFIG_DIR/validator-vote-keypair$label.json
-  stake_keypair_path=$SOLANA_CONFIG_DIR/validator-stake-keypair$label.json
-  storage_keypair_path=$SOLANA_CONFIG_DIR/validator-storage-keypair$label.json
-  ledger_config_dir=$SOLANA_CONFIG_DIR/validator-ledger$label
-  accounts_config_dir=$SOLANA_CONFIG_DIR/validator-accounts$label
-  configured_flag=$SOLANA_CONFIG_DIR/validator$label.configured
+  : "${identity_keypair_path:=$MORGAN_CONFIG_DIR/validator-keypair$label.json}"
+  # vote_keypair_path=$MORGAN_CONFIG_DIR/validator-vote-keypair$label.json
+  # stake_keypair_path=$MORGAN_CONFIG_DIR/validator-stake-keypair$label.json
+  # storage_keypair_path=$MORGAN_CONFIG_DIR/validator-storage-keypair$label.json
+  # ledger_config_dir=$MORGAN_CONFIG_DIR/validator-ledger$label
+  # accounts_config_dir=$MORGAN_CONFIG_DIR/validator-accounts$label
+  # configured_flag=$MORGAN_CONFIG_DIR/validator$label.configured
 
-  mkdir -p "$SOLANA_CONFIG_DIR"
+  vote_keypair_path=$MORGAN_CONFIG_DIR/validator-vote-keypair.json
+  stake_keypair_path=$MORGAN_CONFIG_DIR/validator-stake-keypair.json
+  storage_keypair_path=$MORGAN_CONFIG_DIR/validator-storage-keypair.json
+  ledger_config_dir=$MORGAN_CONFIG_DIR/validator-ledger
+  accounts_config_dir=$MORGAN_CONFIG_DIR/validator-accounts
+  configured_flag=$MORGAN_CONFIG_DIR/validator.configured
+
+  mkdir -p "$MORGAN_CONFIG_DIR"
   [[ -r "$identity_keypair_path" ]] || $morgan_keybot -o "$identity_keypair_path"
   [[ -r "$vote_keypair_path" ]] || $morgan_keybot -o "$vote_keypair_path"
   [[ -r "$stake_keypair_path" ]] || $morgan_keybot -o "$stake_keypair_path"
@@ -317,6 +329,7 @@ elif [[ $node_type = validator ]]; then
   default_arg --rpc-drone-address "${entrypoint_address%:*}:11100"
 
   rsync_entrypoint_url=$(rsync_url "$entrypoint")
+  echo $rsync_entrypoint_url
 else
   echo "Error: Unknown node_type: $node_type"
   exit 1
@@ -333,8 +346,8 @@ if [[ $node_type != replicator ]]; then
 identity pubkey: $identity_pubkey
 vote pubkey: $vote_pubkey
 storage pubkey: $storage_pubkey
-ledger: $ledger_config_dir
-accounts: $accounts_config_dir
+ledger path: $ledger_config_dir
+accounts path: $accounts_config_dir
 ========================================================================
 EOF
 
@@ -345,10 +358,12 @@ EOF
   default_arg --ledger "$ledger_config_dir"
   default_arg --accounts "$accounts_config_dir"
 
-  if [[ -n $SOLANA_CUDA ]]; then
+  if [[ -n $MORGAN_CUDA ]]; then
+    # program=morgan-validator-cuda
     program=$morgan_validator_cuda
   else
     program=$morgan_validator
+    # program=morgan-validator
   fi
 fi
 
@@ -358,17 +373,17 @@ if [[ -z $CI ]]; then # Skip in CI
 fi
 
 new_gensis_block() {
-  ! diff -q "$SOLANA_RSYNC_CONFIG_DIR"/ledger/genesis.json "$ledger_config_dir"/genesis.json >/dev/null 2>&1
+  ! diff -q "$MORGAN_RSYNC_CONFIG_DIR"/ledger/genesis.json "$ledger_config_dir"/genesis.json >/dev/null 2>&1
 }
 
 set -e
 PS4="$(basename "$0"): "
 while true; do
-  if [[ ! -d "$SOLANA_RSYNC_CONFIG_DIR"/ledger ]]; then
+  if [[ ! -d "$MORGAN_RSYNC_CONFIG_DIR"/ledger ]]; then
     if [[ $node_type = bootstrap_leader ]]; then
-      ledger_not_setup "$SOLANA_RSYNC_CONFIG_DIR/ledger does not exist"
+      ledger_not_setup "$MORGAN_RSYNC_CONFIG_DIR/ledger does not exist"
     fi
-    $rsync -vPr "${rsync_entrypoint_url:?}"/config/ledger "$SOLANA_RSYNC_CONFIG_DIR"
+    $rsync -vPr "${rsync_entrypoint_url:?}"/config/ledger "$MORGAN_RSYNC_CONFIG_DIR"
   fi
 
   if new_gensis_block; then
@@ -381,7 +396,7 @@ while true; do
   fi
 
   if [[ ! -d "$ledger_config_dir" ]]; then
-    cp -a "$SOLANA_RSYNC_CONFIG_DIR"/ledger/ "$ledger_config_dir"
+    cp -a "$MORGAN_RSYNC_CONFIG_DIR"/ledger/ "$ledger_config_dir"
     #$morgan_ledgerbot --ledger "$ledger_config_dir" verify
   fi
 
@@ -432,7 +447,7 @@ while true; do
       ((secs_to_next_genesis_poll--)) && continue
       (
         set -x
-        $rsync -r "${rsync_entrypoint_url:?}"/config/ledger "$SOLANA_RSYNC_CONFIG_DIR"
+        $rsync -r "${rsync_entrypoint_url:?}"/config/ledger "$MORGAN_RSYNC_CONFIG_DIR"
       ) || true
       new_gensis_block && break
 

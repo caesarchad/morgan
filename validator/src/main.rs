@@ -1,17 +1,18 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg};
 use log::*;
-use morgan::cluster_info::{Node, FULLNODE_PORT_RANGE};
-use morgan::contact_info::ContactInfo;
-use morgan::local_vote_signer_service::LocalVoteSignerService;
+use morgan::clusterMessage::{Node, FULLNODE_PORT_RANGE};
+use morgan::connectionInfo::ContactInfo;
+use morgan::localVoteSignerService::LocalVoteSignerService;
 use morgan::service::Service;
 use morgan::socketaddr;
-use morgan::validator::{Validator, ValidatorConfig};
+use morgan::verifier::{Validator, ValidatorConfig};
 use morgan_netutil::parse_port_range;
 use morgan_interface::signature::{read_keypair, Keypair, KeypairUtil};
 use std::fs::File;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::sync::Arc;
+use morgan_helper::logHelper::*;
 
 fn port_range_validator(port_range: String) -> Result<(), String> {
     if parse_port_range(&port_range).is_some() {
@@ -266,7 +267,19 @@ fn main() {
     if let Some(filename) = init_complete_file {
         File::create(filename).unwrap_or_else(|_| panic!("Unable to create: {}", filename));
     }
-    info!("Validator initialized");
-    validator.join().expect("validator exit");
-    info!("Validator exiting..");
+    // info!("{}", Info(format!("Validator initialized").to_string()));
+    println!("{}",
+        printLn(
+            format!("Verifier initialized").to_string(),
+            module_path!().to_string()
+        )
+    );
+    validator.join().expect("Verifier exit");
+    // info!("{}", Info(format!("Validator exiting..").to_string()));
+    println!("{}",
+        printLn(
+            format!("Verifier exiting..").to_string(),
+            module_path!().to_string()
+        )
+    );
 }
