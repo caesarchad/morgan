@@ -17,6 +17,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, Builder, JoinHandle};
 use std::time::Instant;
 use morgan_helper::logHelper::*;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio_sync::semaphore::{AcquireError, Permit as TokioPermit, Semaphore as TokioSemaphore};
 
 #[cfg(feature = "cuda")]
 const RECV_BATCH_MAX: usize = 60_000;
@@ -167,5 +171,99 @@ impl Service for SigVerifyStage {
             thread_hdl.join()?;
         }
         Ok(())
+    }
+}
+
+/// The wrapped tokio_sync [`Semaphore`](TokioSemaphore) and total permit capacity.
+#[derive(Debug)]
+struct Inner {
+    semaphore: TokioSemaphore,
+    capacity: usize,
+}
+
+/// A futures-aware semaphore.
+#[derive(Clone, Debug)]
+pub struct Semaphore {
+    inner: Arc<Inner>,
+}
+
+/// A permit acquired from a semaphore, allowing access to a shared resource.
+/// Dropping a `Permit` will release it back to the semaphore.
+#[derive(Debug)]
+pub struct Permit {
+    inner: Arc<Inner>,
+    permit: TokioPermit,
+}
+
+impl Semaphore {
+    /// Create a new semaphore with `capacity` number of available permits.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                semaphore: TokioSemaphore::new(capacity),
+                capacity,
+            }),
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity
+    }
+
+    pub fn available_permits(&self) -> usize {
+        self.inner.semaphore.available_permits()
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.available_permits() == self.capacity()
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.available_permits() == 0
+    }
+
+    /// Try to acquire an available permit from the semaphore. If no permits are
+    /// available, return `None`.
+    pub fn try_acquire(&self) -> Option<Permit> {
+        let mut permit = TokioPermit::new();
+        match permit.try_acquire(&self.inner.semaphore) {
+            Ok(()) => Some(Permit {
+                inner: Arc::clone(&self.inner),
+                permit,
+            }),
+            Err(err) => {
+                // The TokioSemaphore is not dropped yet and our wrapper never
+                // calls .close(), so the TokioSemaphore can never be closed
+                // unless all references, including this &self, have been
+                // dropped.
+                assert!(!err.is_closed());
+                assert!(err.is_no_permits());
+                None
+            }
+        }
+    }
+}
+
+impl Permit {
+    fn release(&mut self) {
+        self.permit.release(&self.inner.semaphore);
+    }
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+struct PermitFuture {
+    permit: Option<Permit>,
+}
+
+impl PermitFuture {
+    fn new(permit: Permit) -> Self {
+        Self {
+            permit: Some(permit),
+        }
     }
 }

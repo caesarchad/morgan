@@ -4,6 +4,7 @@ use crate::packet::Packet;
 use std::cmp;
 use std::io;
 use std::net::UdpSocket;
+use std::collections::HashMap;
 
 pub const NUM_RCVMMSGS: usize = 16;
 
@@ -31,6 +32,17 @@ pub fn recv_mmsg(socket: &UdpSocket, packets: &mut [Packet]) -> io::Result<usize
         i += 1;
     }
     Ok(i)
+}
+
+pub fn get_json_metrics() -> HashMap<String, String> {
+    let mut json_metrics: HashMap<String, String> = HashMap::new();
+    json_metrics = add_revision_hash(json_metrics);
+    json_metrics
+}
+
+fn add_revision_hash(mut json_metrics: HashMap<String, String>) -> HashMap<String, String> {
+    json_metrics.insert("revision".to_string(), "modification".to_string());
+    json_metrics
 }
 
 #[cfg(target_os = "linux")]

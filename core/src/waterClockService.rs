@@ -7,6 +7,8 @@ use morgan_interface::poh_config::PohConfig;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep, Builder, JoinHandle};
+use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use std::io::Result;
 
 pub struct PohService {
     tick_producer: JoinHandle<()>,
@@ -80,6 +82,33 @@ impl Service for PohService {
     fn join(self) -> thread::Result<()> {
         self.tick_producer.join()
     }
+}
+
+pub fn write_u16frame<'stream, 'buf, 'c, TSocket>(
+    mut stream: &'stream mut TSocket,
+    buf: &'buf [u8],
+) -> Result<()>
+where
+    'stream: 'c,
+    'buf: 'c,
+    TSocket: AsyncWrite + Unpin,
+{
+    //let len = buf
+    //    .len()
+    //    .try_into()
+    //     TODO Maybe use our own Error Type?
+    //    .map_err(|_e| std::io::Error::new(std::io::ErrorKind::Other, "Too big"))?;
+
+    Ok(())
+}
+
+fn write_u16frame_len<TSocket>(stream: &mut TSocket, len: u16) -> Result<()>
+where
+    TSocket: AsyncWrite + Unpin,
+{
+    let len = u16::to_be_bytes(len);
+
+    Ok(())
 }
 
 #[cfg(test)]

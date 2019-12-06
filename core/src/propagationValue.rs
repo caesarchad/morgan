@@ -3,8 +3,14 @@ use bincode::serialize;
 use morgan_interface::pubkey::Pubkey;
 use morgan_interface::signature::{Keypair, Signable, Signature};
 use morgan_interface::transaction::Transaction;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, time::Duration};
 use std::fmt;
+use prometheus::{
+    core::{Collector, Desc},
+    proto::MetricFamily,
+    Histogram, HistogramOpts, HistogramTimer, HistogramVec, IntCounter, IntCounterVec, IntGauge,
+    IntGaugeVec, Opts,
+};
 
 /// CrdsValue that is replicated across the cluster
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -110,6 +116,166 @@ impl Signable for Vote {
 
     fn set_signature(&mut self, signature: Signature) {
         self.signature = signature
+    }
+}
+
+pub struct DurationHistogram {
+    histogram: Histogram,
+}
+
+impl DurationHistogram {
+    pub fn new(histogram: Histogram) -> DurationHistogram {
+        DurationHistogram { histogram }
+    }
+
+    pub fn observe_duration(&self, d: Duration) {
+        // Duration is full seconds + nanos elapsed from the presious full second
+        let v = d.as_secs() as f64 + f64::from(d.subsec_nanos()) / 1e9;
+        self.histogram.observe(v);
+    }
+}
+
+#[derive(Clone)]
+pub struct OpMetrics {
+    module: String,
+    counters: IntCounterVec,
+    gauges: IntGaugeVec,
+    peer_gauges: IntGaugeVec,
+    duration_histograms: HistogramVec,
+}
+
+impl OpMetrics {
+    pub fn new<S: Into<String>>(name: S) -> OpMetrics {
+        let name_str = name.into();
+        OpMetrics {
+            module: name_str.clone(),
+            counters: IntCounterVec::new(
+                Opts::new(name_str.clone(), format!("Counters for {}", name_str)),
+                &["op"],
+            )
+            .unwrap(),
+            gauges: IntGaugeVec::new(
+                Opts::new(
+                    format!("{}_gauge", name_str.clone()),
+                    format!("Gauges for {}", name_str),
+                ),
+                &["op"],
+            )
+            .unwrap(),
+            peer_gauges: IntGaugeVec::new(
+                Opts::new(
+                    format!("{}_peer_gauge", name_str.clone()),
+                    format!("Gauges of each remote peer for {}", name_str),
+                ),
+                &["op", "remote_peer_id"],
+            )
+            .unwrap(),
+            duration_histograms: HistogramVec::new(
+                HistogramOpts::new(
+                    format!("{}_duration", name_str.clone()),
+                    format!("Histogram values for {}", name_str),
+                ),
+                &["op"],
+            )
+            .unwrap(),
+        }
+    }
+
+    pub fn new_and_registered<S: Into<String>>(name: S) -> OpMetrics {
+        let op_metrics = OpMetrics::new(name);
+        prometheus::register(Box::new(op_metrics.clone()))
+            .expect("OpMetrics registration on Prometheus failed.");
+        op_metrics
+    }
+
+    #[inline]
+    pub fn gauge(&self, name: &str) -> IntGauge {
+        self.gauges.with_label_values(&[name])
+    }
+
+    #[inline]
+    pub fn peer_gauge(&self, name: &str, remote_peer_id: &str) -> IntGauge {
+        self.peer_gauges.with_label_values(&[name, remote_peer_id])
+    }
+
+    #[inline]
+    pub fn counter(&self, name: &str) -> IntCounter {
+        self.counters.with_label_values(&[name])
+    }
+
+    #[inline]
+    pub fn histogram(&self, name: &str) -> Histogram {
+        self.duration_histograms.with_label_values(&[name])
+    }
+
+    pub fn duration_histogram(&self, name: &str) -> DurationHistogram {
+        DurationHistogram::new(self.duration_histograms.with_label_values(&[name]))
+    }
+
+    #[inline]
+    pub fn inc(&self, op: &str) {
+        self.counters.with_label_values(&[op]).inc();
+    }
+
+    #[inline]
+    pub fn inc_by(&self, op: &str, v: usize) {
+        // The underlying method is expecting i64, but most of the types
+        // we're going to log are `u64` or `usize`.
+        self.counters.with_label_values(&[op]).inc_by(v as i64);
+    }
+
+    #[inline]
+    pub fn add(&self, op: &str) {
+        self.gauges.with_label_values(&[op]).inc();
+    }
+
+    #[inline]
+    pub fn sub(&self, op: &str) {
+        self.gauges.with_label_values(&[op]).dec();
+    }
+
+    #[inline]
+    pub fn set(&self, op: &str, v: usize) {
+        // The underlying method is expecting i64, but most of the types
+        // we're going to log are `u64` or `usize`.
+        self.gauges.with_label_values(&[op]).set(v as i64);
+    }
+
+    #[inline]
+    pub fn observe(&self, op: &str, v: f64) {
+        self.duration_histograms.with_label_values(&[op]).observe(v);
+    }
+
+    pub fn observe_duration(&self, op: &str, d: Duration) {
+        // Duration is full seconds + nanos elapsed from the presious full second
+        let v = d.as_secs() as f64 + f64::from(d.subsec_nanos()) / 1e9;
+        self.duration_histograms.with_label_values(&[op]).observe(v);
+    }
+
+    pub fn timer(&self, op: &str) -> HistogramTimer {
+        self.duration_histograms
+            .with_label_values(&[op])
+            .start_timer()
+    }
+}
+
+impl Collector for OpMetrics {
+    fn desc(&self) -> Vec<&Desc> {
+        let mut ms = Vec::with_capacity(4);
+        ms.extend(self.counters.desc());
+        ms.extend(self.gauges.desc());
+        ms.extend(self.peer_gauges.desc());
+        ms.extend(self.duration_histograms.desc());
+        ms
+    }
+
+    fn collect(&self) -> Vec<MetricFamily> {
+        let mut ms = Vec::with_capacity(4);
+        ms.extend(self.counters.collect());
+        ms.extend(self.gauges.collect());
+        ms.extend(self.peer_gauges.collect());
+        ms.extend(self.duration_histograms.collect());
+        ms
     }
 }
 

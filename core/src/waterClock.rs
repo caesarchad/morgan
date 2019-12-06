@@ -1,5 +1,7 @@
-//! The `Poh` module provides an object for generating a Proof of History.
 use morgan_interface::hash::{hash, hashv, Hash};
+use bytes::BytesMut;
+use futures::io::AsyncRead;
+use std::io::Result;
 
 pub struct Poh {
     pub hash: Hash,
@@ -78,6 +80,29 @@ impl Poh {
             hash: self.hash,
         })
     }
+}
+
+pub fn read_u16frame<'stream, 'buf, 'c, TSocket>(
+    mut stream: &'stream mut TSocket,
+    buf: &'buf mut BytesMut,
+) -> Result<()>
+where
+    'stream: 'c,
+    'buf: 'c,
+    TSocket: AsyncRead + Unpin,
+{
+    let len = 8;
+    buf.resize(len as usize, 0);
+    Ok(())
+}
+
+fn read_u16frame_len<TSocket>(stream: &mut TSocket) -> Result<u16>
+where
+    TSocket: AsyncRead + Unpin,
+{
+    let mut len_buf = [0, 0];
+
+    Ok(u16::from_be_bytes(len_buf))
 }
 
 #[cfg(test)]
