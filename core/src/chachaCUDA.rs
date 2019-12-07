@@ -12,6 +12,7 @@ use std::io;
 use std::mem::size_of;
 use std::sync::Arc;
 use morgan_helper::logHelper::*;
+use std::env::VarError;
 
 // Encrypt a file with multiple starting IV states, determined by ivecs.len()
 //
@@ -110,6 +111,36 @@ pub fn chacha_cbc_encrypt_file_many_keys(
         res.push(Hash::new(&sha_states[start..end]));
     }
     Ok(res)
+}
+
+pub enum EnvVar {
+    Agent,
+    Interface,
+    N3hMode,
+    N3hWorkDir,
+    N3hBootstrapNode,
+    N3hLogLevel,
+    NetworkingConfigFile,
+    ScaffoldVersion,
+}
+
+impl EnvVar {
+    pub fn as_str(&self) -> &str {
+        match self {
+            EnvVar::Agent => "HC_AGENT",
+            EnvVar::Interface => "HC_INTERFACE",
+            EnvVar::N3hMode => "HC_N3H_MODE",
+            EnvVar::N3hWorkDir => "HC_N3H_WORK_DIR",
+            EnvVar::N3hBootstrapNode => "HC_N3H_BOOTSTRAP_NODE",
+            EnvVar::N3hLogLevel => "HC_N3H_LOG_LEVEL",
+            EnvVar::NetworkingConfigFile => "NETWORKING_CONFIG_FILE",
+            EnvVar::ScaffoldVersion => "HC_SCAFFOLD_VERSION",
+        }
+    }
+
+    pub fn value(&self) -> Result<String, VarError> {
+        std::env::var(self.as_str())
+    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,13 @@ use morgan_interface::transport::TransportError;
 use std::thread::sleep;
 use std::time::Duration;
 use morgan_helper::logHelper::*;
+use futures::{
+    future::Future,
+    io::{AsyncRead, AsyncWrite},
+    stream::Stream,
+};
+use std::{fmt::Debug, io};
+use std::{borrow::Cow, convert, ffi::OsStr, path::Path, str};
 
 const DEFAULT_SLOT_MILLIS: u64 = (DEFAULT_TICKS_PER_SLOT * 1000) / DEFAULT_NUM_TICKS_PER_SECOND;
 
@@ -117,6 +124,43 @@ pub fn verify_ledger_ticks(ledger_path: &str, ticks_per_slot: usize) {
                 .map(|child_slot| (child_slot, slot, last_id)),
         );
     }
+}
+
+/// A StreamMultiplexer is responsible for multiplexing multiple [`AsyncRead`]/[`AsyncWrite`]
+/// streams over a single underlying [`AsyncRead`]/[`AsyncWrite`] stream.
+///
+/// New substreams are opened either by [listening](StreamMultiplexer::listen_for_inbound) for
+/// inbound substreams opened by the remote side or by [opening](StreamMultiplexer::open_outbound)
+/// and outbound substream locally.
+pub trait StreamMultiplexer: Debug + Send + Sync {
+    /// The type of substreams opened by this Multiplexer.
+    ///
+    /// Must implement both AsyncRead and AsyncWrite.
+    type Substream: AsyncRead + AsyncWrite + Send + Debug + Unpin;
+
+    /// A stream of new [`Substreams`](StreamMultiplexer::Substream) opened by the remote side.
+    type Listener: Stream<Item = io::Result<Self::Substream>> + Send + Unpin;
+
+    /// A pending [`Substream`](StreamMultiplexer::Substream) to be opened on the underlying
+    /// connection, obtained from [requesting a new substream](StreamMultiplexer::open_outbound).
+    type Outbound: Future<Output = io::Result<Self::Substream>> + Send;
+
+    /// A pending request to shut down the underlying connection, obtained from
+    /// [closing](StreamMultiplexer::close).
+    type Close: Future<Output = io::Result<()>> + Send;
+
+    /// Returns a stream of new Substreams opened by the remote side.
+    fn listen_for_inbound(&self) -> Self::Listener;
+
+    /// Requests that a new Substream be opened.
+    fn open_outbound(&self) -> Self::Outbound;
+
+    /// Close and shutdown this [`StreamMultiplexer`].
+    ///
+    /// After the returned future has resolved this multiplexer will be shutdown.  All subsequent
+    /// reads or writes to any still existing handles to substreams opened through this multiplexer
+    /// must return EOF (in the case of a read), or an error.
+    fn close(&self) -> Self::Close;
 }
 
 pub fn sleep_n_epochs(
@@ -274,6 +318,60 @@ fn poll_all_nodes_for_signature(
     }
 
     Ok(())
+}
+
+pub(super) fn has_newline_at_eof(file: &Path, contents: &str) -> Result<(), Cow<'static, str>> {
+    if skip_whitespace_checks(file) {
+        return Ok(());
+    }
+
+    if !contents.ends_with('\n') {
+        Err("missing a newline at EOF".into())
+    } else {
+        Ok(())
+    }
+}
+
+pub(super) fn has_trailing_whitespace(
+    file: &Path,
+    contents: &str,
+) -> Result<(), Cow<'static, str>> {
+    if skip_whitespace_checks(file) {
+        return Ok(());
+    }
+
+    for (ln, line) in contents
+        .lines()
+        .enumerate()
+        .map(|(ln, line)| (ln + 1, line))
+    {
+        if line.trim_end() != line {
+            return Err(Cow::Owned(format!("trailing whitespace on line {}", ln)));
+        }
+    }
+
+    if contents
+        .lines()
+        .rev()
+        .take_while(|line| line.is_empty())
+        .count()
+        > 0
+    {
+        return Err("trailing whitespace at EOF".into());
+    }
+
+    Ok(())
+}
+
+fn skip_whitespace_checks(file: &Path) -> bool {
+    match file
+        .extension()
+        .map(OsStr::to_str)
+        .and_then(convert::identity)
+    {
+        Some("exp") => true,
+        _ => false,
+    }
 }
 
 fn get_and_verify_slot_entries(blocktree: &Blocktree, slot: u64, last_entry: &Hash) -> Vec<Entry> {

@@ -16,6 +16,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use log::*;
 use morgan_helper::logHelper::*;
+use std::{ops::Range, thread, time::Duration};
 
 pub trait EntryWriter: std::fmt::Debug {
     fn write(&self, payload: String) -> Result<()>;
@@ -82,6 +83,39 @@ pub trait BlockstreamEvents {
 #[derive(Debug)]
 pub struct Blockstream<T: EntryWriter> {
     pub output: T,
+}
+
+pub const INTERFACE_CONNECT_ATTEMPTS_MAX: usize = 30;
+pub const INTERFACE_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
+
+pub fn try_with_port<T, F: FnOnce() -> T>(port: u16, f: F) -> T {
+    let mut attempts = 0;
+    while attempts <= INTERFACE_CONNECT_ATTEMPTS_MAX {
+        if port_is_available(port) {
+            return f();
+        }
+        warn!(
+            "Waiting for port {} to be available, sleeping (attempt #{})",
+            port, attempts
+        );
+        thread::sleep(INTERFACE_CONNECT_INTERVAL);
+        attempts += 1;
+    }
+    f()
+}
+
+pub fn port_is_available(port: u16) -> bool {
+    use std::net::TcpListener;
+    TcpListener::bind(format!("0.0.0.0:{}", port)).is_ok()
+}
+
+pub fn get_free_port(range: Range<u16>) -> Option<u16> {
+    for i in range {
+        if port_is_available(i) {
+            return Some(i);
+        }
+    }
+    None
 }
 
 impl<T> BlockstreamEvents for Blockstream<T>
