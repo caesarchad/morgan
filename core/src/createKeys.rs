@@ -4,6 +4,8 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use rayon::prelude::*;
 use morgan_interface::signature::Keypair;
+use serde::{Deserialize, Serialize};
+
 
 pub struct GenKeys {
     generator: ChaChaRng,
@@ -34,6 +36,24 @@ impl GenKeys {
             .into_par_iter()
             .map(|seed| Keypair::generate(&mut ChaChaRng::from_seed(seed)))
             .collect()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct LoggerConfig {
+    // Use async logging
+    pub is_async: bool,
+    // chan_size of slog async drain for node logging.
+    pub chan_size: usize,
+}
+
+impl Default for LoggerConfig {
+    fn default() -> LoggerConfig {
+        LoggerConfig {
+            is_async: true,
+            chan_size: 256,
+        }
     }
 }
 

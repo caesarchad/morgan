@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{self, sleep, Builder, JoinHandle};
 use std::time::Duration;
 use morgan_helper::logHelper::*;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub struct ClusterInfoVoteListener {
     thread_hdls: Vec<JoinHandle<()>>,
@@ -82,6 +84,33 @@ impl Service for ClusterInfoVoteListener {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct SafetyRulesConfig {
+    pub backend: SafetyRulesBackend,
+}
+
+impl Default for SafetyRulesConfig {
+    fn default() -> Self {
+        Self {
+            backend: SafetyRulesBackend::InMemoryStorage,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type")]
+pub enum SafetyRulesBackend {
+    InMemoryStorage,
+    OnDiskStorage {
+        // In testing scenarios this implies that the default state is okay if
+        // a state is not specified.
+        default: bool,
+        // Required path for on disk storage
+        path: PathBuf,
+    },
 }
 
 #[cfg(test)]

@@ -8,6 +8,8 @@ use morgan_interface::signature::{Signable, Signature};
 use morgan_interface::timing::timestamp;
 use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::net::{IpAddr, SocketAddr};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Structure representing a node on the network
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -68,6 +70,22 @@ macro_rules! socketaddr_any {
     () => {
         socketaddr!(0, 0)
     };
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct MetricsConfig {
+    pub dir: PathBuf,
+    pub collection_interval_ms: u64,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> MetricsConfig {
+        MetricsConfig {
+            dir: PathBuf::from("metrics"),
+            collection_interval_ms: 1000,
+        }
+    }
 }
 
 impl Default for ContactInfo {

@@ -12,6 +12,31 @@ use std::sync::mpsc::{channel, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, Builder, JoinHandle};
 use morgan_helper::logHelper::*;
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct DebugInterfaceConfig {
+    pub admission_control_node_debug_port: u16,
+    pub storage_node_debug_port: u16,
+    // This has similar use to the core-node-debug-server itself
+    pub metrics_server_port: u16,
+    pub public_metrics_server_port: u16,
+    pub address: String,
+}
+
+impl Default for DebugInterfaceConfig {
+    fn default() -> DebugInterfaceConfig {
+        DebugInterfaceConfig {
+            admission_control_node_debug_port: 6191,
+            storage_node_debug_port: 6194,
+            metrics_server_port: 9101,
+            public_metrics_server_port: 9102,
+            address: "localhost".to_string(),
+        }
+    }
+}
 
 pub struct FetchStage {
     thread_hdls: Vec<JoinHandle<()>>,
@@ -139,5 +164,27 @@ impl Service for FetchStage {
             thread_hdl.join()?;
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct AdmissionControlConfig {
+    pub address: String,
+    pub admission_control_service_port: u16,
+    pub need_to_check_mempool_before_validation: bool,
+    pub max_concurrent_inbound_syncs: usize,
+    pub upstream_proxy_timeout: Duration,
+}
+
+impl Default for AdmissionControlConfig {
+    fn default() -> AdmissionControlConfig {
+        AdmissionControlConfig {
+            address: "0.0.0.0".to_string(),
+            admission_control_service_port: 8001,
+            need_to_check_mempool_before_validation: false,
+            max_concurrent_inbound_syncs: 100,
+            upstream_proxy_timeout: Duration::from_secs(1),
+        }
     }
 }
