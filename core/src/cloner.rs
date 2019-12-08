@@ -10,7 +10,7 @@ use crate::fixMissingSpotService::{RepairSlotRange, RepairStrategy};
 use crate::result::Result;
 use crate::service::Service;
 use crate::streamer::{receiver, responder};
-use crate::spotTransmitService::WindowService;
+use crate::spot_transmit_service::WindowService;
 use bincode::deserialize;
 use rand::thread_rng;
 use rand::Rng;

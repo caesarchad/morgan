@@ -130,19 +130,19 @@ where
         entry: &Entry,
     ) -> Result<()> {
         let transactions: Vec<Vec<u8>> = serialize_transactions(entry);
-        let mut isVoteTx = false;
+        let mut be_vote_tx = false;
         // ignore transaction's length entry
         if transactions.len() > 0 {
             // ignore entry.transaction.message's account_keys contain Vote111111111111111111111111111111111111111
             for tx in &entry.transactions {
                 for key in &tx.message.account_keys {
                     if key.to_string() == "Vote111111111111111111111111111111111111111" {
-                        isVoteTx = true;
+                        be_vote_tx = true;
                         break;
                     } 
                 }
             }
-            if isVoteTx == false {
+            if be_vote_tx == false {
                 let stream_entry = json!({
                     "num_hashes": entry.num_hashes,
                     "hash": entry.hash,

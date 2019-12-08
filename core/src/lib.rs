@@ -69,7 +69,7 @@ pub mod testTx;
 pub mod transactionProcessCentre;
 pub mod transactionVerifyCentre;
 pub mod verifier;
-pub mod spotTransmitService;
+pub mod spot_transmit_service;
 
 #[macro_use]
 extern crate morgan_budget_controller;

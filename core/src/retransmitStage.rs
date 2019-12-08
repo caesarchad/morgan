@@ -10,7 +10,7 @@ use crate::result::{Error, Result};
 use crate::service::Service;
 use crate::stakingUtils;
 use crate::streamer::BlobReceiver;
-use crate::spotTransmitService::{should_retransmit_and_persist, WindowService};
+use crate::spot_transmit_service::{should_retransmit_and_persist, WindowService};
 use morgan_metricbot::{datapoint_info, inc_new_counter_error};
 use morgan_runtime::epoch_schedule::EpochSchedule;
 use morgan_interface::hash::Hash;
