@@ -1,9 +1,9 @@
 //! The `result` module exposes a Result type that propagates one of many different Error types.
 
-use crate::blockBufferPool;
-use crate::clusterMessage;
+use crate::block_buffer_pool;
+use crate::cluster_message;
 use crate::packet;
-use crate::waterClockRecorder;
+use crate::water_clock_recorder;
 use bincode;
 use serde_json;
 use morgan_interface::transaction;
@@ -28,12 +28,12 @@ pub enum Error {
     TryRecvError(std::sync::mpsc::TryRecvError),
     Serialize(std::boxed::Box<bincode::ErrorKind>),
     TransactionError(transaction::TransactionError),
-    ClusterInfoError(clusterMessage::ClusterInfoError),
+    ClusterInfoError(cluster_message::ClusterInfoError),
     BlobError(packet::BlobError),
     ErasureError(reed_solomon_erasure::Error),
     SendError,
-    PohRecorderError(waterClockRecorder::PohRecorderError),
-    BlocktreeError(blockBufferPool::BlocktreeError),
+    PohRecorderError(water_clock_recorder::PohRecorderError),
+    BlocktreeError(block_buffer_pool::BlocktreeError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -66,8 +66,8 @@ impl std::convert::From<transaction::TransactionError> for Error {
         Error::TransactionError(e)
     }
 }
-impl std::convert::From<clusterMessage::ClusterInfoError> for Error {
-    fn from(e: clusterMessage::ClusterInfoError) -> Error {
+impl std::convert::From<cluster_message::ClusterInfoError> for Error {
+    fn from(e: cluster_message::ClusterInfoError) -> Error {
         Error::ClusterInfoError(e)
     }
 }
@@ -204,13 +204,13 @@ impl std::convert::From<std::boxed::Box<bincode::ErrorKind>> for Error {
         Error::Serialize(e)
     }
 }
-impl std::convert::From<waterClockRecorder::PohRecorderError> for Error {
-    fn from(e: waterClockRecorder::PohRecorderError) -> Error {
+impl std::convert::From<water_clock_recorder::PohRecorderError> for Error {
+    fn from(e: water_clock_recorder::PohRecorderError) -> Error {
         Error::PohRecorderError(e)
     }
 }
-impl std::convert::From<blockBufferPool::BlocktreeError> for Error {
-    fn from(e: blockBufferPool::BlocktreeError) -> Error {
+impl std::convert::From<block_buffer_pool::BlocktreeError> for Error {
+    fn from(e: block_buffer_pool::BlocktreeError) -> Error {
         Error::BlocktreeError(e)
     }
 }

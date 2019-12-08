@@ -1,6 +1,6 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg, SubCommand};
-use morgan::blockBufferPool::Blocktree;
-use morgan::blockBufferPoolProcessor::process_blocktree;
+use morgan::block_buffer_pool::Blocktree;
+use morgan::block_buffer_pool_processor::process_blocktree;
 use morgan_interface::genesis_block::GenesisBlock;
 use std::io::{stdout, Write};
 use std::process::exit;

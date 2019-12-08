@@ -2,7 +2,7 @@
 
 extern crate test;
 
-use morgan::entryInfo::{next_entries, reconstruct_entries_from_blobs, EntrySlice};
+use morgan::entry_info::{next_entries, reconstruct_entries_from_blobs, EntrySlice};
 use morgan_interface::hash::{hash, Hash};
 use morgan_interface::signature::{Keypair, KeypairUtil};
 use morgan_interface::system_transaction;

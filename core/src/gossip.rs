@@ -3,11 +3,11 @@
 //! designed to run with a simulator or over a UDP network connection with messages up to a
 //! packet::BLOB_DATA_SIZE size.
 
-use crate::connectionInfoTable::Crds;
-use crate::gossipErrorType::CrdsGossipError;
-use crate::pullFromGossip::CrdsGossipPull;
-use crate::pushToGossip::{CrdsGossipPush, CRDS_GOSSIP_NUM_ACTIVE};
-use crate::propagationValue::CrdsValue;
+use crate::connection_info_table::Crds;
+use crate::gossip_error_type::CrdsGossipError;
+use crate::pull_from_gossip::CrdsGossipPull;
+use crate::push_to_gossip::{CrdsGossipPush, CRDS_GOSSIP_NUM_ACTIVE};
+use crate::propagation_value::CrdsValue;
 use hashbrown::HashMap;
 use morgan_runtime::bloom::Bloom;
 use morgan_interface::hash::Hash;
@@ -229,7 +229,7 @@ pub fn get_weight(max_weight: f32, time_since_last_selected: u32, stake: f32) ->
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connectionInfo::ContactInfo;
+    use crate::connection_info::ContactInfo;
     use morgan_interface::hash::hash;
     use morgan_interface::timing::timestamp;
 

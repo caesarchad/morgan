@@ -4,7 +4,7 @@
 extern crate test;
 
 use morgan::water_clock::Poh;
-use morgan::waterClockService::NUM_HASHES_PER_BATCH;
+use morgan::water_clock_service::NUM_HASHES_PER_BATCH;
 use morgan_interface::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

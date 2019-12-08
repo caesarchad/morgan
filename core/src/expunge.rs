@@ -279,8 +279,8 @@ impl Default for CodingGenerator {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::blockBufferPool::get_tmp_ledger_path;
-    use crate::blockBufferPool::Blocktree;
+    use crate::block_buffer_pool::get_tmp_ledger_path;
+    use crate::block_buffer_pool::Blocktree;
     use crate::packet::{index_blobs, SharedBlob, BLOB_DATA_SIZE, BLOB_HEADER_SIZE};
     use morgan_interface::pubkey::Pubkey;
     use morgan_interface::signature::{Keypair, KeypairUtil};

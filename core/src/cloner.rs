@@ -1,12 +1,12 @@
-use crate::fetchSpotStage::BlobFetchStage;
-use crate::blockBufferPool::Blocktree;
+use crate::fetch_spot_stage::BlobFetchStage;
+use crate::block_buffer_pool::Blocktree;
 #[cfg(feature = "chacha")]
 use crate::chacha::{chacha_cbc_encrypt_ledger, CHACHA_BLOCK_SIZE};
-use crate::clusterMessage::{ClusterInfo, Node};
-use crate::connectionInfo::ContactInfo;
-use crate::gossipService::GossipService;
+use crate::cluster_message::{ClusterInfo, Node};
+use crate::connection_info::ContactInfo;
+use crate::gossip_service::GossipService;
 use crate::packet::to_shared_blob;
-use crate::fixMissingSpotService::{RepairSlotRange, RepairStrategy};
+use crate::fix_missing_spot_service::{RepairSlotRange, RepairStrategy};
 use crate::result::Result;
 use crate::service::Service;
 use crate::streamer::{receiver, responder};
@@ -231,8 +231,8 @@ impl Replicator {
                 module_path!().to_string()
             )
         );
-        let (nodes, _) = crate::gossipService::discover_cluster(&cluster_entrypoint.gossip, 1)?;
-        let client = crate::gossipService::get_client(&nodes);
+        let (nodes, _) = crate::gossip_service::discover_cluster(&cluster_entrypoint.gossip, 1)?;
+        let client = crate::gossip_service::get_client(&nodes);
 
         let (storage_blockhash, storage_slot) = Self::poll_for_blockhash_and_slot(&cluster_info)?;
 
@@ -458,7 +458,7 @@ impl Replicator {
 
         #[cfg(feature = "chacha")]
         {
-            use crate::storageStage::NUM_STORAGE_SAMPLES;
+            use crate::storage_stage::NUM_STORAGE_SAMPLES;
             use rand::SeedableRng;
             use rand_chacha::ChaChaRng;
 
@@ -525,7 +525,7 @@ impl Replicator {
     fn submit_mining_proof(&self) {
         // No point if we've got no storage account...
         let nodes = self.cluster_info.read().unwrap().tvu_peers();
-        let client = crate::gossipService::get_client(&nodes);
+        let client = crate::gossip_service::get_client(&nodes);
         assert!(
             client
                 .poll_get_balance(&self.storage_keypair.pubkey())

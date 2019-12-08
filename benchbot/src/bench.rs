@@ -2,7 +2,7 @@ use morgan_metricbot;
 
 use log::*;
 use rayon::prelude::*;
-use morgan::createKeys::GenKeys;
+use morgan::create_keys::GenKeys;
 use morgan_client::perf_utils::{sample_txs, SampleStats};
 use morgan_tokenbot::drone::request_airdrop_transaction;
 use morgan_metricbot::datapoint_info;
@@ -656,8 +656,8 @@ pub fn generate_and_fund_keypairs<T: Client>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use morgan::clusterMessage::FULLNODE_PORT_RANGE;
-    use morgan::localCluster::{ClusterConfig, LocalCluster};
+    use morgan::cluster_message::FULLNODE_PORT_RANGE;
+    use morgan::local_cluster::{ClusterConfig, LocalCluster};
     use morgan::verifier::ValidatorConfig;
     use morgan_client::thin_client::create_client;
     use morgan_tokenbot::drone::run_local_drone;

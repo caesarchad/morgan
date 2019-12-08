@@ -1,6 +1,6 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg};
-use morgan::clusterMessage::{Node, FULLNODE_PORT_RANGE};
-use morgan::connectionInfo::ContactInfo;
+use morgan::cluster_message::{Node, FULLNODE_PORT_RANGE};
+use morgan::connection_info::ContactInfo;
 use morgan::cloner::Replicator;
 use morgan::socketaddr;
 use morgan_interface::signature::{read_keypair, Keypair, KeypairUtil};

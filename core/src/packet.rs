@@ -1,5 +1,5 @@
 //! The `packet` module defines data structures and methods to pull data from the network.
-use crate::recvmmsg::{recv_mmsg, NUM_RCVMMSGS};
+use crate::recvmmsg::{recvmmsg, NUM_RCVMMSGS};
 use crate::result::{Error, Result};
 use bincode;
 use byteorder::{ByteOrder, LittleEndian};
@@ -225,7 +225,7 @@ impl Packets {
         trace!("receiving on {}", socket.local_addr().unwrap());
         loop {
             self.packets.resize(i + NUM_RCVMMSGS, Packet::default());
-            match recv_mmsg(socket, &mut self.packets[i..]) {
+            match recvmmsg(socket, &mut self.packets[i..]) {
                 Err(_) if i > 0 => {
                     break;
                 }

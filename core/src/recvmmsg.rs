@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub const NUM_RCVMMSGS: usize = 16;
 
 #[cfg(not(target_os = "linux"))]
-pub fn recv_mmsg(socket: &UdpSocket, packets: &mut [Packet]) -> io::Result<usize> {
+pub fn recvmmsg(socket: &UdpSocket, packets: &mut [Packet]) -> io::Result<usize> {
     let mut i = 0;
     let count = cmp::min(NUM_RCVMMSGS, packets.len());
     for p in packets.iter_mut().take(count) {
@@ -46,7 +46,7 @@ fn add_revision_hash(mut json_metrics: HashMap<String, String>) -> HashMap<Strin
 }
 
 #[cfg(target_os = "linux")]
-pub fn recv_mmsg(sock: &UdpSocket, packets: &mut [Packet]) -> io::Result<usize> {
+pub fn recvmmsg(sock: &UdpSocket, packets: &mut [Packet]) -> io::Result<usize> {
     use libc::{
         c_void, iovec, mmsghdr, recvmmsg, sockaddr_in, socklen_t, time_t, timespec, MSG_WAITFORONE,
     };
@@ -113,7 +113,7 @@ mod tests {
         }
 
         let mut packets = vec![Packet::default(); NUM_RCVMMSGS];
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(sent, recv);
         for i in 0..recv {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);
@@ -134,14 +134,14 @@ mod tests {
         }
 
         let mut packets = vec![Packet::default(); NUM_RCVMMSGS * 2];
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(NUM_RCVMMSGS, recv);
         for i in 0..recv {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);
             assert_eq!(packets[i].meta.addr(), saddr);
         }
 
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(sent - NUM_RCVMMSGS, recv);
         for i in 0..recv {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);
@@ -165,7 +165,7 @@ mod tests {
 
         let start = Instant::now();
         let mut packets = vec![Packet::default(); NUM_RCVMMSGS * 2];
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(NUM_RCVMMSGS, recv);
         for i in 0..recv {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);
@@ -173,7 +173,7 @@ mod tests {
         }
         reader.set_nonblocking(true).unwrap();
 
-        let _recv = recv_mmsg(&reader, &mut packets[..]);
+        let _recv = recvmmsg(&reader, &mut packets[..]);
         assert!(start.elapsed().as_secs() < 5);
     }
 
@@ -202,7 +202,7 @@ mod tests {
 
         let mut packets = vec![Packet::default(); NUM_RCVMMSGS * 2];
 
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(NUM_RCVMMSGS, recv);
         for i in 0..sent1 {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);
@@ -214,7 +214,7 @@ mod tests {
             assert_eq!(packets[i].meta.addr(), saddr2);
         }
 
-        let recv = recv_mmsg(&reader, &mut packets[..]).unwrap();
+        let recv = recvmmsg(&reader, &mut packets[..]).unwrap();
         assert_eq!(sent1 + sent2 - NUM_RCVMMSGS, recv);
         for i in 0..recv {
             assert_eq!(packets[i].meta.size, PACKET_DATA_SIZE);

@@ -1,4 +1,4 @@
-use crate::blockBufferPool::Blocktree;
+use crate::block_buffer_pool::Blocktree;
 use morgan_storage_api::SLOTS_PER_SEGMENT;
 use std::fs::File;
 use std::io;
@@ -174,11 +174,11 @@ impl std::iter::FromIterator<[u8; 2]> for WrappedShard {
 
 #[cfg(test)]
 mod tests {
-    use crate::blockBufferPool::get_tmp_ledger_path;
-    use crate::blockBufferPool::Blocktree;
+    use crate::block_buffer_pool::get_tmp_ledger_path;
+    use crate::block_buffer_pool::Blocktree;
     use crate::chacha::chacha_cbc_encrypt_ledger;
-    use crate::entryInfo::Entry;
-    use crate::createKeys::GenKeys;
+    use crate::entry_info::Entry;
+    use crate::create_keys::GenKeys;
     use morgan_interface::hash::{hash, Hash, Hasher};
     use morgan_interface::signature::KeypairUtil;
     use morgan_interface::system_transaction;
