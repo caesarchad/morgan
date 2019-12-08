@@ -3,7 +3,7 @@
 #![feature(test)]
 extern crate test;
 
-use morgan::waterClock::Poh;
+use morgan::water_clock::Poh;
 use morgan::waterClockService::NUM_HASHES_PER_BATCH;
 use morgan_interface::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};

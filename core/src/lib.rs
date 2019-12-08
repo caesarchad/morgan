@@ -45,7 +45,7 @@ pub mod localCluster;
 pub mod localVoteSignerService;
 pub mod forkSelection;
 pub mod packet;
-pub mod waterClock;
+pub mod water_clock;
 pub mod waterClockRecorder;
 pub mod waterClockService;
 pub mod recvmmsg;

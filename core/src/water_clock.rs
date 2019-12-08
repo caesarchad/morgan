@@ -107,7 +107,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::waterClock::{Poh, PohEntry};
+    use crate::water_clock::{Poh, PohEntry};
     use morgan_interface::hash::{hash, hashv, Hash};
 
     fn verify(initial_hash: Hash, entries: &[(PohEntry, Option<Hash>)]) -> bool {

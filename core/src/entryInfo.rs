@@ -3,7 +3,7 @@
 //! transactions within it. Entries cannot be reordered, and its field `num_hashes`
 //! represents an approximate amount of time since the last Entry was created.
 use crate::packet::{Blob, SharedBlob, BLOB_DATA_SIZE};
-use crate::waterClock::Poh;
+use crate::water_clock::Poh;
 use crate::result::Result;
 use bincode::{deserialize, serialized_size};
 use chrono::prelude::Utc;
