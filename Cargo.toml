@@ -1,7 +1,5 @@
 [workspace]
 members = [
-    "bench-exchange",
-    "bench-streamerbot",
     "benchbot",
     "client",
     "core",
