@@ -65,7 +65,7 @@ morgan_gossip=$(morgan_program gossip)
 morgan_keybot=$(morgan_program keybot)
 morgan_ledgerbot=$(morgan_program ledgerbot)
 morgan_wallet=$(morgan_program wallet)
-morgan_replicator=$(morgan_program storage-miner)
+morgan_storage_miner=$(morgan_program storage-miner)
 
 export RUST_LOG=${RUST_LOG:-morgan=info} # if RUST_LOG is unset, default to info
 export RUST_BACKTRACE=1

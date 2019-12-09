@@ -42,11 +42,11 @@ use std::time::Duration;
 use morgan_helper::logHelper::*;
 
 #[derive(Serialize, Deserialize)]
-pub enum ReplicatorRequest {
+pub enum StorageMinerRequest {
     GetSlotHeight(SocketAddr),
 }
 
-pub struct Replicator {
+pub struct StorageMiner {
     gossip_service: GossipService,
     fetch_stage: BlobFetchStage,
     window_service: WindowService,
@@ -140,10 +140,10 @@ fn create_request_processor(
         let packets = r_reader.recv_timeout(Duration::from_secs(1));
         if let Ok(packets) = packets {
             for packet in &packets.packets {
-                let req: result::Result<ReplicatorRequest, Box<bincode::ErrorKind>> =
+                let req: result::Result<StorageMinerRequest, Box<bincode::ErrorKind>> =
                     deserialize(&packet.data[..packet.meta.size]);
                 match req {
-                    Ok(ReplicatorRequest::GetSlotHeight(from)) => {
+                    Ok(StorageMinerRequest::GetSlotHeight(from)) => {
                         if let Ok(blob) = to_shared_blob(slot, from) {
                             let _ = s_responder.send(vec![blob]);
                         }
@@ -168,7 +168,7 @@ fn create_request_processor(
     thread_handles
 }
 
-impl Replicator {
+impl StorageMiner {
     /// Returns a Result that contains a storage-miner on success
     ///
     /// # Arguments
@@ -187,11 +187,11 @@ impl Replicator {
     ) -> Result<Self> {
         let exit = Arc::new(AtomicBool::new(false));
 
-        // info!("{}", Info(format!("Replicator: id: {}", keypair.pubkey()).to_string()));
+        // info!("{}", Info(format!("StorageMiner: id: {}", keypair.pubkey()).to_string()));
         // info!("{}", Info(format!("Creating cluster info....").to_string()));
         println!("{}",
             printLn(
-                format!("Replicator: id: {}", keypair.pubkey()).to_string(),
+                format!("StorageMiner: id: {}", keypair.pubkey()).to_string(),
                 module_path!().to_string()
             )
         );
@@ -345,7 +345,7 @@ impl Replicator {
                 break;
             }
             self.submit_mining_proof();
-            // TODO: Replicators should be submitting proofs as fast as possible
+            // TODO: Miners should be submitting proofs as fast as possible
             sleep(Duration::from_secs(2));
         }
     }

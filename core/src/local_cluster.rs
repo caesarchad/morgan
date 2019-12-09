@@ -4,7 +4,7 @@ use crate::cluster_message::{Node, FULLNODE_PORT_RANGE};
 use crate::connection_info::ContactInfo;
 use crate::genesis_utils::{create_genesis_block_with_leader, GenesisBlockInfo};
 use crate::gossip_service::discover_cluster;
-use crate::cloner::Replicator;
+use crate::cloner::StorageMiner;
 use crate::service::Service;
 use crate::verifier::{Validator, ValidatorConfig};
 use morgan_client::thin_client::create_client;
@@ -37,15 +37,15 @@ pub struct ValidatorInfo {
     pub ledger_path: String,
 }
 
-pub struct ReplicatorInfo {
-    pub replicator_storage_pubkey: Pubkey,
+pub struct StorageMinerInfo {
+    pub miner_storage_pubkey: Pubkey,
     pub ledger_path: String,
 }
 
-impl ReplicatorInfo {
+impl StorageMinerInfo {
     fn new(storage_pubkey: Pubkey, ledger_path: String) -> Self {
         Self {
-            replicator_storage_pubkey: storage_pubkey,
+            miner_storage_pubkey: storage_pubkey,
             ledger_path,
         }
     }
@@ -55,11 +55,11 @@ impl ReplicatorInfo {
 pub struct ClusterConfig {
     /// The fullnode config that should be applied to every node in the cluster
     pub validator_config: ValidatorConfig,
-    /// Number of replicators in the cluster
-    /// Note- replicators will timeout if ticks_per_slot is much larger than the default 8
-    pub num_replicators: usize,
+    /// Number of miners in the cluster
+    /// Note- miners will timeout if ticks_per_slot is much larger than the default 8
+    pub miner_amnt: usize,
     /// Number of nodes that are unstaked and not voting (a.k.a listening)
-    pub num_listeners: u64,
+    pub observer_amnt: u64,
     /// The stakes of each node
     pub node_stakes: Vec<u64>,
     /// The total difs available to the cluster
@@ -75,8 +75,8 @@ impl Default for ClusterConfig {
     fn default() -> Self {
         ClusterConfig {
             validator_config: ValidatorConfig::default(),
-            num_replicators: 0,
-            num_listeners: 0,
+            miner_amnt: 0,
+            observer_amnt: 0,
             node_stakes: vec![],
             cluster_difs: 0,
             ticks_per_slot: DEFAULT_TICKS_PER_SLOT,
@@ -99,8 +99,8 @@ pub struct LocalCluster {
     fullnodes: HashMap<Pubkey, Validator>,
     genesis_ledger_path: String,
     pub genesis_block: GenesisBlock,
-    replicators: Vec<Replicator>,
-    pub replicator_infos: HashMap<Pubkey, ReplicatorInfo>,
+    miners: Vec<StorageMiner>,
+    pub storage_miner_infos: HashMap<Pubkey, StorageMinerInfo>,
 }
 
 impl LocalCluster {
@@ -174,11 +174,11 @@ impl LocalCluster {
             funding_keypair: mint_keypair,
             entry_point_info: leader_contact_info,
             fullnodes,
-            replicators: vec![],
+            miners: vec![],
             genesis_ledger_path,
             genesis_block,
             fullnode_infos,
-            replicator_infos: HashMap::new(),
+            storage_miner_infos: HashMap::new(),
             validator_config: config.validator_config.clone(),
             listener_infos: HashMap::new(),
         };
@@ -191,21 +191,21 @@ impl LocalCluster {
             voting_disabled: true,
             ..config.validator_config.clone()
         };
-        (0..config.num_listeners).for_each(|_| cluster.add_validator(&listener_config, 0));
+        (0..config.observer_amnt).for_each(|_| cluster.add_validator(&listener_config, 0));
 
         discover_cluster(
             &cluster.entry_point_info.gossip,
-            config.node_stakes.len() + config.num_listeners as usize,
+            config.node_stakes.len() + config.observer_amnt as usize,
         )
         .unwrap();
 
-        for _ in 0..config.num_replicators {
-            cluster.add_replicator();
+        for _ in 0..config.miner_amnt {
+            cluster.add_miner();
         }
 
         discover_cluster(
             &cluster.entry_point_info.gossip,
-            config.node_stakes.len() + config.num_replicators as usize,
+            config.node_stakes.len() + config.miner_amnt as usize,
         )
         .unwrap();
 
@@ -224,7 +224,7 @@ impl LocalCluster {
             node.join().unwrap();
         }
 
-        while let Some(storage_miner) = self.replicators.pop() {
+        while let Some(storage_miner) = self.miners.pop() {
             storage_miner.close();
         }
     }
@@ -322,9 +322,9 @@ impl LocalCluster {
         }
     }
 
-    fn add_replicator(&mut self) {
-        let replicator_keypair = Arc::new(Keypair::new());
-        let replicator_pubkey = replicator_keypair.pubkey();
+    fn add_miner(&mut self) {
+        let storage_miner_keypair = Arc::new(Keypair::new());
+        let storage_miner_pubkey = storage_miner_keypair.pubkey();
         let storage_keypair = Arc::new(Keypair::new());
         let storage_pubkey = storage_keypair.pubkey();
         let client = create_client(
@@ -336,27 +336,27 @@ impl LocalCluster {
         Self::transfer_with_client(
             &client,
             &self.funding_keypair,
-            &replicator_keypair.pubkey(),
+            &storage_miner_keypair.pubkey(),
             42,
         );
-        let replicator_node = Node::new_localhost_replicator(&replicator_pubkey);
+        let storage_miner_node = Node::new_localhost_storage_miner(&storage_miner_pubkey);
 
-        Self::setup_storage_account(&client, &storage_keypair, &replicator_keypair, true).unwrap();
+        Self::setup_storage_account(&client, &storage_keypair, &storage_miner_keypair, true).unwrap();
 
-        let (replicator_ledger_path, _blockhash) = create_new_tmp_ledger!(&self.genesis_block);
-        let storage_miner = Replicator::new(
-            &replicator_ledger_path,
-            replicator_node,
+        let (miner_ledger_path, _blockhash) = create_new_tmp_ledger!(&self.genesis_block);
+        let storage_miner = StorageMiner::new(
+            &miner_ledger_path,
+            storage_miner_node,
             self.entry_point_info.clone(),
-            replicator_keypair,
+            storage_miner_keypair,
             storage_keypair,
         )
-        .unwrap_or_else(|err| panic!("Replicator::new() failed: {:?}", err));
+        .unwrap_or_else(|err| panic!("StorageMiner::new() failed: {:?}", err));
 
-        self.replicators.push(storage_miner);
-        self.replicator_infos.insert(
-            replicator_pubkey,
-            ReplicatorInfo::new(storage_pubkey, replicator_ledger_path),
+        self.miners.push(storage_miner);
+        self.storage_miner_infos.insert(
+            storage_miner_pubkey,
+            StorageMinerInfo::new(storage_pubkey, miner_ledger_path),
         );
     }
 
@@ -366,7 +366,7 @@ impl LocalCluster {
             .fullnode_infos
             .values()
             .map(|f| &f.ledger_path)
-            .chain(self.replicator_infos.values().map(|info| &info.ledger_path))
+            .chain(self.storage_miner_infos.values().map(|info| &info.ledger_path))
         {
             remove_dir_all(&ledger_path)
                 .unwrap_or_else(|_| panic!("Unable to remove {}", ledger_path));
@@ -598,7 +598,7 @@ mod test {
         let num_nodes = 1;
         let cluster = LocalCluster::new_with_equal_stakes(num_nodes, 100, 3);
         assert_eq!(cluster.fullnodes.len(), num_nodes);
-        assert_eq!(cluster.replicators.len(), 0);
+        assert_eq!(cluster.miners.len(), 0);
     }
 
     #[test]
@@ -608,10 +608,10 @@ mod test {
         validator_config.rpc_config.enable_fullnode_exit = true;
         validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
         const NUM_NODES: usize = 1;
-        let num_replicators = 1;
+        let miner_amnt = 1;
         let config = ClusterConfig {
             validator_config,
-            num_replicators,
+            miner_amnt,
             node_stakes: vec![3; NUM_NODES],
             cluster_difs: 100,
             ticks_per_slot: 8,
@@ -620,7 +620,7 @@ mod test {
         };
         let cluster = LocalCluster::new(&config);
         assert_eq!(cluster.fullnodes.len(), NUM_NODES);
-        assert_eq!(cluster.replicators.len(), num_replicators);
+        assert_eq!(cluster.miners.len(), miner_amnt);
     }
 
 }

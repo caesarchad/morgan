@@ -133,7 +133,7 @@ setup_validator_accounts() {
   return 0
 }
 
-setup_replicator_account() {
+setup_miner_account() {
   declare entrypoint_ip=$1
   declare node_keypair_path=$2
   declare storage_keypair_path=$3
@@ -143,7 +143,7 @@ setup_replicator_account() {
   storage_pubkey=$($morgan_keybot pubkey "$storage_keypair_path")
 
   if [[ -f $configured_flag ]]; then
-    echo "Replicator account has already been configured"
+    echo "There is an already configured StorageMiner account existing"
   else
     $morgan_wallet --keypair "$node_keypair_path" --url "http://$entrypoint_ip:10099" airdrop "$stake" || return $?
 
@@ -269,7 +269,7 @@ ledger path: $ledger_config_dir
 ======================================================================
 EOF
   # program=morgan-storage-miner
-  program=$morgan_replicator
+  program=$morgan_storage_miner
   default_arg --entrypoint "$entrypoint_address"
   default_arg --identity "$identity_keypair_path"
   default_arg --storage-keypair "$storage_keypair_path"
@@ -411,7 +411,7 @@ while true; do
         "$storage_keypair_path" \
         "$stake"
     elif [[ $node_type = storage-miner ]]; then
-      setup_replicator_account "${entrypoint_address%:*}" \
+      setup_miner_account "${entrypoint_address%:*}" \
         "$identity_keypair_path" \
         "$storage_keypair_path" \
         "$stake"

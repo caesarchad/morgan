@@ -136,7 +136,6 @@ impl RepairService {
             let repairs = {
                 match repair_strategy {
                     RepairStrategy::RepairRange(ref repair_slot_range) => {
-                        // Strategy used by replicators
                         Self::generate_repairs_in_range(
                             blocktree,
                             MAX_REPAIR_LENGTH,

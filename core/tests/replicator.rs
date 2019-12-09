@@ -10,8 +10,8 @@ use morgan::cluster_message::{ClusterInfo, Node, FULLNODE_PORT_RANGE};
 use morgan::connection_info::ContactInfo;
 use morgan::gossip_service::discover_cluster;
 use morgan::local_cluster::{ClusterConfig, LocalCluster};
-use morgan::cloner::Replicator;
-use morgan::cloner::ReplicatorRequest;
+use morgan::cloner::StorageMiner;
+use morgan::cloner::StorageMinerRequest;
 use morgan::storage_stage::STORAGE_ROTATE_TEST_COUNT;
 use morgan::streamer::blob_receiver;
 use morgan::verifier::ValidatorConfig;
@@ -35,7 +35,7 @@ fn get_slot_height(to: SocketAddr) -> u64 {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    let req = ReplicatorRequest::GetSlotHeight(socket.local_addr().unwrap());
+    let req = StorageMinerRequest::GetSlotHeight(socket.local_addr().unwrap());
     let serialized_req = serialize(&req).unwrap();
     for _ in 0..10 {
         socket.send_to(&serialized_req, to).unwrap();
@@ -48,13 +48,12 @@ fn get_slot_height(to: SocketAddr) -> u64 {
     panic!("Couldn't get slot height!");
 }
 
-fn download_from_replicator(replicator_info: &ContactInfo) {
+fn check_miner_connection(storage_miner_info: &ContactInfo) {
     // Create a client which downloads from the storage-miner and see that it
     // can respond with blobs.
     let tn = Node::new_localhost();
     let cluster_info = ClusterInfo::new_with_invalid_keypair(tn.info.clone());
-    let mut repair_index = get_slot_height(replicator_info.storage_addr);
-    // info!("{}", Info(format!("repair index: {}", repair_index).to_string()));
+    let mut repair_index = get_slot_height(storage_miner_info.storage_addr);
     println!("{}",
         printLn(
             format!("repair index: {}", repair_index).to_string(),
@@ -71,21 +70,16 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
     let repair_socket = Arc::new(tn.sockets.repair);
     let t_receiver = blob_receiver(repair_socket.clone(), &exit, s_reader);
 
-    // info!(
-    //     "{}",
-    //     Info(format!("Sending repair requests from: {} to: {}",
-    //     tn.info.id, replicator_info.gossip).to_string())
-    // );
     println!("{}",
         printLn(
             format!("Sending repair requests from: {} to: {}",
-                tn.info.id, replicator_info.gossip).to_string(),
+                tn.info.id, storage_miner_info.gossip).to_string(),
             module_path!().to_string()
         )
     );
     let mut received_blob = false;
     for _ in 0..5 {
-        repair_socket.send_to(&req, replicator_info.gossip).unwrap();
+        repair_socket.send_to(&req, storage_miner_info.gossip).unwrap();
 
         let x = r_reader.recv_timeout(Duration::new(1, 0));
 
@@ -93,7 +87,6 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
             for b in blobs {
                 let br = b.read().unwrap();
                 assert!(br.index() == repair_index);
-                // info!("{}", Info(format!("br: {:?}", br).to_string()));
                 println!("{}",
                     printLn(
                         format!("br: {:?}", br).to_string(),
@@ -102,7 +95,6 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
                 );
                 let entries = BlockBufferPool::deserialize_blob_data(&br.data()).unwrap();
                 for entry in &entries {
-                    // info!("{}", Info(format!("entry: {:?}", entry).to_string()));
                     println!("{}",
                         printLn(
                             format!("entry: {:?}", entry).to_string(),
@@ -122,11 +114,10 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
     assert!(received_blob);
 }
 
-/// Start the cluster with the given configuration and wait till the replicators are discovered
+/// Start the cluster with the given configuration and wait till the miners are discovered
 /// Then download blobs from one of them.
-fn run_replicator_startup_basic(num_nodes: usize, num_replicators: usize) {
+fn run_miner_startup_basic(num_nodes: usize, miner_amnt: usize) {
     morgan_logger::setup();
-    // info!("{}", Info(format!("starting storage-miner test").to_string()));
     println!("{}",
         printLn(
             format!("starting storage-miner test").to_string(),
@@ -137,26 +128,25 @@ fn run_replicator_startup_basic(num_nodes: usize, num_replicators: usize) {
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
     let config = ClusterConfig {
         validator_config,
-        num_replicators,
+        miner_amnt,
         node_stakes: vec![100; num_nodes],
         cluster_difs: 10_000,
         ..ClusterConfig::default()
     };
     let cluster = LocalCluster::new(&config);
 
-    let (cluster_nodes, cluster_replicators) = discover_cluster(
+    let (cluster_nodes, cluster_miners) = discover_cluster(
         &cluster.entry_point_info.gossip,
-        num_nodes + num_replicators,
+        num_nodes + miner_amnt,
     )
     .unwrap();
     assert_eq!(
-        cluster_nodes.len() + cluster_replicators.len(),
-        num_nodes + num_replicators
+        cluster_nodes.len() + cluster_miners.len(),
+        num_nodes + miner_amnt
     );
-    let mut replicator_count = 0;
-    let mut replicator_info = ContactInfo::default();
-    for node in &cluster_replicators {
-        // info!("{}", Info(format!("storage: {:?} rpc: {:?}", node.storage_addr, node.rpc).to_string()));
+    let mut storage_miner_cnt = 0;
+    let mut storage_miner_info = ContactInfo::default();
+    for node in &cluster_miners {
         println!("{}",
             printLn(
                 format!("storage: {:?} rpc: {:?}", node.storage_addr, node.rpc).to_string(),
@@ -164,27 +154,27 @@ fn run_replicator_startup_basic(num_nodes: usize, num_replicators: usize) {
             )
         );
         if ContactInfo::is_valid_address(&node.storage_addr) {
-            replicator_count += 1;
-            replicator_info = node.clone();
+            storage_miner_cnt += 1;
+            storage_miner_info = node.clone();
         }
     }
-    assert_eq!(replicator_count, num_replicators);
+    assert_eq!(storage_miner_cnt, miner_amnt);
 
-    download_from_replicator(&replicator_info);
+    check_miner_connection(&storage_miner_info);
 }
 
 #[test]
-fn test_replicator_startup_1_node() {
-    run_replicator_startup_basic(1, 1);
+fn test_storage_miner_startup_1_node() {
+    run_miner_startup_basic(1, 1);
 }
 
 #[test]
-fn test_replicator_startup_2_nodes() {
-    run_replicator_startup_basic(2, 1);
+fn test_storage_miner_startup_2_nodes() {
+    run_miner_startup_basic(2, 1);
 }
 
 #[test]
-fn test_replicator_startup_leader_hang() {
+fn test_storage_miner_startup_leader_hang() {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     morgan_logger::setup();
@@ -195,45 +185,44 @@ fn test_replicator_startup_leader_hang() {
             module_path!().to_string()
         )
     );
-    let leader_ledger_path = "replicator_test_leader_ledger";
+    let leader_ledger_path = "path_to_leder_ledger_file";
     let (genesis_block, _mint_keypair) = create_genesis_block(10_000);
-    let (replicator_ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
+    let (miner_ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
     {
-        let replicator_keypair = Arc::new(Keypair::new());
+        let storage_miner_keypair = Arc::new(Keypair::new());
         let storage_keypair = Arc::new(Keypair::new());
 
-        // info!("{}", Info(format!("starting storage-miner node").to_string()));
         println!("{}",
             printLn(
                 format!("starting storage-miner node").to_string(),
                 module_path!().to_string()
             )
         );
-        let replicator_node = Node::new_localhost_with_pubkey(&replicator_keypair.pubkey());
+        let storage_miner_node = Node::new_localhost_with_pubkey(&storage_miner_keypair.pubkey());
 
         let fake_gossip = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
         let leader_info = ContactInfo::new_gossip_entry_point(&fake_gossip);
 
-        let replicator_res = Replicator::new(
-            &replicator_ledger_path,
-            replicator_node,
+        let storage_miner_res = StorageMiner::new(
+            &miner_ledger_path,
+            storage_miner_node,
             leader_info,
-            replicator_keypair,
+            storage_miner_keypair,
             storage_keypair,
         );
 
-        assert!(replicator_res.is_err());
+        assert!(storage_miner_res.is_err());
     }
 
     let _ignored = BlockBufferPool::destroy(&leader_ledger_path);
-    let _ignored = BlockBufferPool::destroy(&replicator_ledger_path);
+    let _ignored = BlockBufferPool::destroy(&miner_ledger_path);
     let _ignored = remove_dir_all(&leader_ledger_path);
-    let _ignored = remove_dir_all(&replicator_ledger_path);
+    let _ignored = remove_dir_all(&miner_ledger_path);
 }
 
 #[test]
-fn test_replicator_startup_ledger_hang() {
+fn test_storage_miner_startup_ledger_hang() {
     morgan_logger::setup();
     // info!("{}", Info(format!("starting storage-miner test").to_string()));
     println!("{}",
@@ -255,32 +244,32 @@ fn test_replicator_startup_ledger_hang() {
     );
     let bad_keys = Arc::new(Keypair::new());
     let storage_keypair = Arc::new(Keypair::new());
-    let mut replicator_node = Node::new_localhost_with_pubkey(&bad_keys.pubkey());
+    let mut storage_miner_node = Node::new_localhost_with_pubkey(&bad_keys.pubkey());
 
     // Pass bad TVU sockets to prevent successful ledger download
-    replicator_node.sockets.tvu = vec![std::net::UdpSocket::bind("0.0.0.0:0").unwrap()];
-    let (replicator_ledger_path, _blockhash) = create_new_tmp_ledger!(&cluster.genesis_block);
+    storage_miner_node.sockets.tvu = vec![std::net::UdpSocket::bind("0.0.0.0:0").unwrap()];
+    let (miner_ledger_path, _blockhash) = create_new_tmp_ledger!(&cluster.genesis_block);
 
-    let replicator_res = Replicator::new(
-        &replicator_ledger_path,
-        replicator_node,
+    let storage_miner_res = StorageMiner::new(
+        &miner_ledger_path,
+        storage_miner_node,
         cluster.entry_point_info.clone(),
         bad_keys,
         storage_keypair,
     );
 
-    assert!(replicator_res.is_err());
+    assert!(storage_miner_res.is_err());
 }
 
 #[test]
 fn test_account_setup() {
     let num_nodes = 1;
-    let num_replicators = 1;
+    let miner_amnt = 1;
     let mut validator_config = ValidatorConfig::default();
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
     let config = ClusterConfig {
         validator_config,
-        num_replicators,
+        miner_amnt,
         node_stakes: vec![100; num_nodes],
         cluster_difs: 10_000,
         ..ClusterConfig::default()
@@ -289,7 +278,7 @@ fn test_account_setup() {
 
     let _ = discover_cluster(
         &cluster.entry_point_info.gossip,
-        num_nodes + num_replicators as usize,
+        num_nodes + miner_amnt as usize,
     )
     .unwrap();
     // now check that the cluster actually has accounts for the storage-miner.
@@ -297,10 +286,10 @@ fn test_account_setup() {
         cluster.entry_point_info.client_facing_addr(),
         FULLNODE_PORT_RANGE,
     );
-    cluster.replicator_infos.iter().for_each(|(_, value)| {
+    cluster.storage_miner_infos.iter().for_each(|(_, value)| {
         assert_eq!(
             client
-                .poll_get_balance(&value.replicator_storage_pubkey)
+                .poll_get_balance(&value.miner_storage_pubkey)
                 .unwrap(),
             1
         );
