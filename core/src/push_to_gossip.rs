@@ -97,7 +97,7 @@ impl CrdsGossipPush {
     /// Returns a list of Pubkeys for the selected peers and a list of values to send to all the
     /// peers.
     /// The list of push messages is created such that all the randomly selected peers have not
-    /// pruned the source addresses.
+    /// pruned the genesis addresses.
     pub fn new_push_messages(&mut self, crds: &Crds, now: u64) -> (Vec<Pubkey>, Vec<CrdsValue>) {
         let max = self.active_set.len();
         let mut nodes: Vec<_> = (0..max).collect();

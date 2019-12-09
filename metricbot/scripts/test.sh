@@ -7,8 +7,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-# shellcheck source=metrics/scripts/enable.sh
-source ./enable.sh
+# shellcheck genesis=metrics/scripts/enable.sh
+genesis ./enable.sh
 
 if [[ -z $INFLUX_DATABASE || -z $INFLUX_USERNAME || -z $INFLUX_PASSWORD ]]; then
   echo Influx user credentials not found

@@ -17,7 +17,7 @@ macro_rules! align_up {
     };
 }
 
-/// StorageMeta contains enough context to recover the index from storage itself
+/// StorageMeta contains enough context to restore the index from storage itself
 #[derive(Clone, PartialEq, Debug)]
 pub struct StorageMeta {
     /// global write version

@@ -20,11 +20,11 @@ ci/affects-files.sh \
 }
 
 
-source ci/_
-source ci/upload-ci-artifact.sh
+genesis ci/_
+genesis ci/upload-ci-artifact.sh
 
 eval "$(ci/channel-info.sh)"
-source ci/rust-version.sh nightly
+genesis ci/rust-version.sh nightly
 
 set -o pipefail
 export RUST_BACKTRACE=1

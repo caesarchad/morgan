@@ -1072,7 +1072,7 @@ impl ClusterInfo {
     ) -> Vec<SharedBlob> {
         if let Some(blocktree) = blocktree {
             // Try to find the requested index in one of the slots
-            let blob = blocktree.get_data_blob(slot, blob_index);
+            let blob = blocktree.fetch_info_obj(slot, blob_index);
 
             if let Ok(Some(mut blob)) = blob {
                 inc_new_counter_debug!("cluster_info-window-request-ledger", 1);
@@ -1102,12 +1102,12 @@ impl ClusterInfo {
     ) -> Vec<SharedBlob> {
         if let Some(blocktree) = blocktree {
             // Try to find the requested index in one of the slots
-            let meta = blocktree.meta(slot);
+            let meta = blocktree.meta_info(slot);
 
             if let Ok(Some(meta)) = meta {
                 if meta.received > highest_index {
                     // meta.received must be at least 1 by this point
-                    let blob = blocktree.get_data_blob(slot, meta.received - 1);
+                    let blob = blocktree.fetch_info_obj(slot, meta.received - 1);
 
                     if let Ok(Some(mut blob)) = blob {
                         blob.meta.set_addr(from_addr);
@@ -1129,11 +1129,11 @@ impl ClusterInfo {
         let mut res = vec![];
         if let Some(blocktree) = blocktree {
             // Try to find the next "n" parent slots of the input slot
-            while let Ok(Some(meta)) = blocktree.meta(slot) {
+            while let Ok(Some(meta)) = blocktree.meta_info(slot) {
                 if meta.received == 0 {
                     break;
                 }
-                let blob = blocktree.get_data_blob(slot, meta.received - 1);
+                let blob = blocktree.fetch_info_obj(slot, meta.received - 1);
                 if let Ok(Some(mut blob)) = blob {
                     blob.meta.set_addr(from_addr);
                     res.push(Arc::new(RwLock::new(blob)));
@@ -1926,7 +1926,7 @@ mod tests {
             }
 
             blocktree
-                .write_shared_blobs(vec![&blob])
+                .record_public_objs(vec![&blob])
                 .expect("Expect successful ledger write");
 
             let rv = ClusterInfo::run_window_request(
@@ -1944,7 +1944,7 @@ mod tests {
             assert_eq!(v.read().unwrap().meta.size, BLOB_HEADER_SIZE + data_size);
         }
 
-        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
     }
 
     /// test run_window_requestwindow requests respond with the right blob, and do not overrun
@@ -1972,7 +1972,7 @@ mod tests {
                 .collect();
 
             blocktree
-                .write_blobs(&blobs)
+                .record_objs(&blobs)
                 .expect("Expect successful ledger write");
 
             let rv =
@@ -1992,7 +1992,7 @@ mod tests {
             assert!(rv.is_empty());
         }
 
-        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -2008,7 +2008,7 @@ mod tests {
             let (blobs, _) = make_many_slot_entries(1, 3, 5);
 
             blocktree
-                .write_blobs(&blobs)
+                .record_objs(&blobs)
                 .expect("Expect successful ledger write");
 
             // We don't have slot 4, so we don't know how to service this requeset
@@ -2023,12 +2023,12 @@ mod tests {
                 .collect();
             let expected: Vec<_> = (1..=3)
                 .rev()
-                .map(|slot| blocktree.get_data_blob(slot, 4).unwrap().unwrap())
+                .map(|slot| blocktree.fetch_info_obj(slot, 4).unwrap().unwrap())
                 .collect();
             assert_eq!(rv, expected)
         }
 
-        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]

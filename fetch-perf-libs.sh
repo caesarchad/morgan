@@ -58,5 +58,5 @@ fi
 EOF
 
 echo
-echo "source $PWD/target/perf-libs/env.sh to setup environment"
+echo "genesis $PWD/target/perf-libs/env.sh to setup environment"
 exit 0

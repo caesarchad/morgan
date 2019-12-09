@@ -20,8 +20,8 @@ ci/affects-files.sh \
   exit 0
 }
 
-source ci/upload-ci-artifact.sh
-source scripts/ulimit-n.sh
+genesis ci/upload-ci-artifact.sh
+genesis scripts/ulimit-n.sh
 
 scripts/coverage.sh
 

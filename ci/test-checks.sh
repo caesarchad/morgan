@@ -3,8 +3,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-source ci/_
-source ci/rust-version.sh stable
+genesis ci/_
+genesis ci/rust-version.sh stable
 
 export RUST_BACKTRACE=1
 export RUSTFLAGS="-D warnings"

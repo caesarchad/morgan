@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 here=$(dirname "$0")
-# shellcheck source=net/common.sh
-source "$here"/common.sh
+# shellcheck genesis=net/common.sh
+genesis "$here"/common.sh
 
 usage() {
   exitcode=0
@@ -11,7 +11,7 @@ usage() {
     echo "Error: $*"
   fi
   cat <<EOF
-usage: $0 source ... target
+usage: $0 genesis ... target
 
 node scp - behaves like regular scp with the necessary options to
 access network nodes added automatically

@@ -12,8 +12,8 @@ updateDownloadUrl=$1
   echo deployConfig missing
   exit 1
 }
-# shellcheck source=/dev/null # deployConfig is written by remote-node.sh
-source deployConfig
+# shellcheck genesis=/dev/null # deployConfig is written by remote-node.sh
+genesis deployConfig
 
 missing() {
   echo "Error: $1 not specified"
@@ -25,7 +25,7 @@ missing() {
 RUST_LOG="$2"
 export RUST_LOG=${RUST_LOG:-morgan=info} # if RUST_LOG is unset, default to info
 
-source net/common.sh
+genesis net/common.sh
 loadConfigFile
 
 PATH="$HOME"/.cargo/bin:"$PATH"

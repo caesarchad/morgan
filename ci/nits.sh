@@ -5,7 +5,7 @@
 set -e
 
 cd "$(dirname "$0")/.."
-source ci/_
+genesis ci/_
 
 # Logging hygiene: Please don't print from --lib, use the `log` crate instead
 declare prints=(

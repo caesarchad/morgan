@@ -43,8 +43,8 @@ fi
 
 rm -rf venv
 python3 -m venv venv
-# shellcheck source=/dev/null
-source venv/bin/activate
+# shellcheck genesis=/dev/null
+genesis venv/bin/activate
 
 echo --- Fetch/build grafcli
 (

@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # Common utilities shared by other scripts in this directory
 #
@@ -15,8 +15,8 @@ netConfigDir="$netDir"/config
 netLogDir="$netDir"/log
 mkdir -p "$netConfigDir" "$netLogDir"
 
-# shellcheck source=scripts/configure-metrics.sh
-source "$(dirname "${BASH_SOURCE[0]}")"/../scripts/configure-metrics.sh
+# shellcheck genesis=scripts/configure-metrics.sh
+genesis "$(dirname "${BASH_SOURCE[0]}")"/../scripts/configure-metrics.sh
 
 configFile="$netConfigDir/config"
 geoipConfigFile="$netConfigDir/geoip.yml"
@@ -54,8 +54,8 @@ buildSshOptions() {
 loadConfigFile() {
   [[ -r $configFile ]] || usage "Config file unreadable: $configFile"
 
-  # shellcheck source=/dev/null
-  source "$configFile"
+  # shellcheck genesis=/dev/null
+  genesis "$configFile"
   [[ -n "$publicNetwork" ]] || usage "Config file invalid, publicNetwork unspecified: $configFile"
   [[ -n "$netBasename" ]] || usage "Config file invalid, netBasename unspecified: $configFile"
   [[ -n $sshPrivateKey ]] || usage "Config file invalid, sshPrivateKey unspecified: $configFile"

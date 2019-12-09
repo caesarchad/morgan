@@ -2,7 +2,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-source ci/_
+genesis ci/_
 
 annotate() {
   ${BUILDKITE:-false} && {
@@ -10,11 +10,11 @@ annotate() {
   }
 }
 
-source ci/rust-version.sh stable
+genesis ci/rust-version.sh stable
 
 export RUST_BACKTRACE=1
 export RUSTFLAGS="-D warnings"
-source scripts/ulimit-n.sh
+genesis scripts/ulimit-n.sh
 
 # Clear cached json keypair files
 rm -rf "$HOME/.config/morgan"
@@ -63,8 +63,8 @@ test-stable-perf)
 
     rm -rf target/perf-libs
     ./fetch-perf-libs.sh
-    # shellcheck source=/dev/null
-    source ./target/perf-libs/env.sh
+    # shellcheck genesis=/dev/null
+    genesis ./target/perf-libs/env.sh
     ROOT_FEATURES=$ROOT_FEATURES,cuda
   fi
 

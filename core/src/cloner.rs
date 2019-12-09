@@ -372,7 +372,7 @@ impl StorageMiner {
         );
         let mut current_slot = start_slot;
         'outer: loop {
-            while let Ok(meta) = blocktree.meta(current_slot) {
+            while let Ok(meta) = blocktree.meta_info(current_slot) {
                 if let Some(meta) = meta {
                     if meta.is_full() {
                         current_slot += 1;

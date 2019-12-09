@@ -63,7 +63,7 @@ fn main() {
         }
     };
 
-    let entries = match blocktree.read_ledger() {
+    let entries = match blocktree.extract_bill() {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Failed to read ledger at {}: {}", ledger_path, err);

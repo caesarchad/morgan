@@ -7,7 +7,7 @@ pub struct RootedSlotIterator<'a> {
 
 impl<'a> RootedSlotIterator<'a> {
     pub fn new(start_slot: u64, blocktree: &'a super::BlockBufferPool) -> Result<Self> {
-        if blocktree.is_root(start_slot) {
+        if blocktree.is_base(start_slot) {
             Ok(Self {
                 next_slots: vec![start_slot],
                 blocktree,
@@ -26,13 +26,13 @@ impl<'a> Iterator for RootedSlotIterator<'a> {
         let rooted_slot = self
             .next_slots
             .iter()
-            .find(|x| self.blocktree.is_root(**x))
+            .find(|x| self.blocktree.is_base(**x))
             .cloned();
 
         rooted_slot.map(|rooted_slot| {
             let slot_meta = self
                 .blocktree
-                .meta(rooted_slot)
+                .meta_info(rooted_slot)
                 .expect("Database failure, couldnt fetch SlotMeta")
                 .expect("SlotMeta in iterator didn't exist");
 
@@ -49,16 +49,16 @@ mod tests {
 
     #[test]
     fn test_rooted_slot_iterator() {
-        let blocktree_path = get_tmp_ledger_path("test_rooted_slot_iterator");
+        let blocktree_path = fetch_interim_bill_route("test_rooted_slot_iterator");
         let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
-        blocktree.set_root(0, 0).unwrap();
+        blocktree.config_base(0, 0).unwrap();
         let ticks_per_slot = 5;
         /*
             Build a blocktree in the ledger with the following fork structure:
 
                  slot 0
                    |
-                 slot 1  <-- set_root(true)
+                 slot 1  <-- config_base(true)
                  /   \
             slot 2   |
                /     |
@@ -98,7 +98,7 @@ mod tests {
             fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 4, fork_point, fork_hash);
 
         // Set a root
-        blocktree.set_root(3, 0).unwrap();
+        blocktree.config_base(3, 0).unwrap();
 
         // Trying to get an iterator on a different fork will error
         assert!(RootedSlotIterator::new(4, &blocktree).is_err());
@@ -121,6 +121,6 @@ mod tests {
         assert_eq!(result, expected);
 
         drop(blocktree);
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 }

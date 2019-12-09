@@ -499,7 +499,7 @@ mod tests {
             assert_eq!(poh_recorder.tick_cache[0].1, 1);
             assert_eq!(poh_recorder.tick_height, 1);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -527,7 +527,7 @@ mod tests {
             assert_eq!(poh_recorder.tick_cache[1].1, 2);
             assert_eq!(poh_recorder.tick_height, 2);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -552,7 +552,7 @@ mod tests {
             poh_recorder.reset(0, Hash::default(), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -586,7 +586,7 @@ mod tests {
             poh_recorder.clear_bank();
             assert!(poh_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -632,7 +632,7 @@ mod tests {
             assert_eq!(bank_.slot(), bank.slot());
             assert!(poh_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -676,7 +676,7 @@ mod tests {
             let (_, e) = entry_receiver.recv().expect("recv 1");
             assert_eq!(e.len(), 3);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -714,7 +714,7 @@ mod tests {
                 .is_err());
             assert!(entry_receiver.try_recv().is_err());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -754,7 +754,7 @@ mod tests {
                 Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached))
             );
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -801,7 +801,7 @@ mod tests {
             let (_b, e) = entry_receiver.recv().expect("recv 2");
             assert!(!e[0].0.is_tick());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -845,7 +845,7 @@ mod tests {
             assert!(e[0].0.is_tick());
             assert!(e[1].0.is_tick());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -883,7 +883,7 @@ mod tests {
             assert!(poh_recorder.working_bank.is_none());
             assert_eq!(poh_recorder.tick_cache.len(), 3);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -916,7 +916,7 @@ mod tests {
             );
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -948,7 +948,7 @@ mod tests {
             );
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -978,7 +978,7 @@ mod tests {
             poh_recorder.tick();
             assert_eq!(poh_recorder.tick_height, 2);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1010,7 +1010,7 @@ mod tests {
             poh_recorder.reset(1, hash(b"hello"), 0, Some(4), ticks_per_slot);
             assert!(poh_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1038,7 +1038,7 @@ mod tests {
             poh_recorder.clear_bank();
             assert!(receiver.try_recv().is_ok());
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1089,7 +1089,7 @@ mod tests {
             // Make sure the starting slot is updated
             assert_eq!(poh_recorder.start_slot(), end_slot);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1251,7 +1251,7 @@ mod tests {
             // We are not the leader, as expected
             assert_eq!(poh_recorder.reached_leader_tick().0, false);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]

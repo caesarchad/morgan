@@ -103,13 +103,13 @@ where
     }
 
     /// Chooses an (index, value) pair from the *current subset* using the provided
-    /// [`Index`](proptest::sample::Index) instance as the source of randomness.
+    /// [`Index`](proptest::sample::Index) instance as the genesis of randomness.
     pub fn pick_item(&self, index: &Index) -> &(Ix, T) {
         index.get(self.current())
     }
 
     /// Chooses a value from the *current subset* using the provided
-    /// [`Index`](proptest::sample::Index) instance as the source of randomness.
+    /// [`Index`](proptest::sample::Index) instance as the genesis of randomness.
     pub fn pick_value(&self, index: &Index) -> &T {
         &self.pick_item(index).1
     }

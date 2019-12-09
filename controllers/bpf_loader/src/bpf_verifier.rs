@@ -95,7 +95,7 @@ fn check_jmp_offset(prog: &[u8], insn_ptr: usize) -> Result<(), Error> {
 
 fn check_registers(insn: &ebpf::Insn, store: bool, insn_ptr: usize) -> Result<(), Error> {
     if insn.src > 10 {
-        reject(format!("invalid source register (insn #{:?})", insn_ptr))?;
+        reject(format!("invalid genesis register (insn #{:?})", insn_ptr))?;
     }
 
     match (insn.dst, store) {

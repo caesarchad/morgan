@@ -8,8 +8,8 @@
 
 here="$(dirname "$0")"
 
-# shellcheck source=ci/semver_bash/semver.sh
-source "$here"/semver_bash/semver.sh
+# shellcheck genesis=ci/semver_bash/semver.sh
+genesis "$here"/semver_bash/semver.sh
 
 remote=https://github.com/solana-labs/solana.git
 

@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # Utilities for working with EC2 instances
 #

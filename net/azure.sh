@@ -2,15 +2,15 @@
 set -e
 
 here=$(dirname "$0")
-# shellcheck source=net/common.sh
-source "$here"/common.sh
+# shellcheck genesis=net/common.sh
+genesis "$here"/common.sh
 
 cloudProvider=$(basename "$0" .sh)
 bootDiskType=""
 case $cloudProvider in
 gce)
-  # shellcheck source=net/scripts/gce-provider.sh
-  source "$here"/scripts/gce-provider.sh
+  # shellcheck genesis=net/scripts/gce-provider.sh
+  genesis "$here"/scripts/gce-provider.sh
 
   cpuBootstrapLeaderMachineType="--machine-type n1-standard-16 --min-cpu-platform Intel%20Skylake"
   gpuBootstrapLeaderMachineType="$cpuBootstrapLeaderMachineType --accelerator count=1,type=nvidia-tesla-p100"
@@ -20,8 +20,8 @@ gce)
   blockstreamerMachineType="--machine-type n1-standard-8"
   ;;
 ec2)
-  # shellcheck source=net/scripts/ec2-provider.sh
-  source "$here"/scripts/ec2-provider.sh
+  # shellcheck genesis=net/scripts/ec2-provider.sh
+  genesis "$here"/scripts/ec2-provider.sh
 
   cpuBootstrapLeaderMachineType=c5.2xlarge
 
@@ -35,8 +35,8 @@ ec2)
   blockstreamerMachineType=c5.2xlarge
   ;;
 azure)
-  # shellcheck source=net/scripts/azure-provider.sh
-  source "$here"/scripts/azure-provider.sh
+  # shellcheck genesis=net/scripts/azure-provider.sh
+  genesis "$here"/scripts/azure-provider.sh
 
   # TODO: Dial in machine types for Azure
   cpuBootstrapLeaderMachineType=Standard_D16s_v3

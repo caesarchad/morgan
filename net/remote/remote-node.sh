@@ -43,7 +43,7 @@ failOnValidatorBootupFailure=$failOnValidatorBootupFailure
 genesisOptions="$genesisOptions"
 EOF
 
-source net/common.sh
+genesis net/common.sh
 loadConfigFile
 
 case $deployMethod in
@@ -59,9 +59,9 @@ local|tar)
   sudo ln -sT /home/morgan/morgan /var/snap/morgan/current
 
   ./fetch-perf-libs.sh
-  # shellcheck source=/dev/null
-  source ./target/perf-libs/env.sh
-  SUDO_OK=1 source scripts/tune-system.sh
+  # shellcheck genesis=/dev/null
+  genesis ./target/perf-libs/env.sh
+  SUDO_OK=1 genesis scripts/tune-system.sh
 
   (
     sudo scripts/oom-monitor.sh

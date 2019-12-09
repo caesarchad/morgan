@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds perf-libs from the upstream source and installs them into the correct
+# Builds perf-libs from the upstream genesis and installs them into the correct
 # location in the tree
 #
 set -e

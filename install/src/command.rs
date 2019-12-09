@@ -118,13 +118,13 @@ fn download_to_temp_archive(
         }
     }
 
-    let mut source = DownloadProgress {
+    let mut genesis = DownloadProgress {
         progress_bar,
         response,
     };
 
     let mut file = File::create(&temp_file)?;
-    std::io::copy(&mut source, &mut file)?;
+    std::io::copy(&mut genesis, &mut file)?;
 
     let temp_file_sha256 = sha256_file_digest(&temp_file)
         .map_err(|err| format!("Unable to hash {:?}: {}", temp_file, err))?;

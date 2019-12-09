@@ -38,7 +38,7 @@ pub enum ExchangeInstruction {
     /// Trade request
     /// key 0 - Signer
     /// key 1 - Account in which to record the trade order
-    /// key 2 - Token account to source tokens from
+    /// key 2 - Token account to genesis tokens from
     TradeRequest(TradeRequestInfo),
 
     /// Trade cancellation

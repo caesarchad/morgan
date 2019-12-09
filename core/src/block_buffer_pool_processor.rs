@@ -161,7 +161,7 @@ pub fn process_blocktree(
 
         // Load the metadata for this slot
         let meta = blocktree
-            .meta(slot)
+            .meta_info(slot)
             .map_err(|err| {
                 // warn!("Failed to load meta for slot {}: {:?}", slot, err);
                 println!(
@@ -178,7 +178,7 @@ pub fn process_blocktree(
         vec![(slot, meta, bank, entry_height, last_entry_hash)]
     };
 
-    blocktree.set_root(0, 0).expect("Couldn't set first root");
+    blocktree.config_base(0, 0).expect("Couldn't set first root");
 
     let leader_schedule_cache = LeaderScheduleCache::new(*pending_slots[0].2.epoch_schedule(), 0);
 
@@ -202,7 +202,7 @@ pub fn process_blocktree(
         }
 
         // Fetch all entries for this slot
-        let mut entries = blocktree.get_slot_entries(slot, 0, None).map_err(|err| {
+        let mut entries = blocktree.fetch_slit_items(slot, 0, None).map_err(|err| {
             // warn!("Failed to load entries for slot {}: {:?}", slot, err);
             println!(
                 "{}",
@@ -280,9 +280,9 @@ pub fn process_blocktree(
 
         bank.freeze(); // all banks handled by this routine are created from complete slots
 
-        if blocktree.is_root(slot) {
+        if blocktree.is_base(slot) {
             root = slot;
-            leader_schedule_cache.set_root(slot);
+            leader_schedule_cache.config_base(slot);
             bank.squash();
             pending_slots.clear();
             fork_info.clear();
@@ -301,7 +301,7 @@ pub fn process_blocktree(
         // This is a fork point, create a new child bank for each fork
         for next_slot in meta.next_slots {
             let next_meta = blocktree
-                .meta(next_slot)
+                .meta_info(next_slot)
                 .map_err(|err| {
                     // warn!("Failed to load meta for slot {}: {:?}", slot, err);
                     println!(
@@ -431,7 +431,7 @@ pub mod tests {
         let last_entry_hash = entries.last().unwrap().hash;
 
         let blobs = entries_to_blobs(&entries, slot, parent_slot, true);
-        blocktree.insert_data_blobs(blobs.iter()).unwrap();
+        blocktree.punctuate_info_objs(blobs.iter()).unwrap();
 
         last_entry_hash
     }
@@ -474,7 +474,7 @@ pub mod tests {
             entries.pop();
 
             let blobs = entries_to_blobs(&entries, slot, parent_slot, false);
-            blocktree.insert_data_blobs(blobs.iter()).unwrap();
+            blocktree.punctuate_info_objs(blobs.iter()).unwrap();
         }
 
         // slot 2, points at slot 1
@@ -516,7 +516,7 @@ pub mod tests {
                /     |
             slot 3   |
                      |
-                   slot 4 <-- set_root(true)
+                   slot 4 <-- config_base(true)
 
         */
         let blocktree =
@@ -550,7 +550,7 @@ pub mod tests {
                 module_path!().to_string()
             )
         );
-        blocktree.set_root(4, 0).unwrap();
+        blocktree.config_base(4, 0).unwrap();
 
         let (bank_forks, bank_forks_info, _) =
             process_blocktree(&genesis_block, &blocktree, None).unwrap();
@@ -597,7 +597,7 @@ pub mod tests {
 
                  slot 0
                    |
-                 slot 1  <-- set_root(true)
+                 slot 1  <-- config_base(true)
                  /   \
             slot 2   |
                /     |
@@ -637,8 +637,8 @@ pub mod tests {
                 module_path!().to_string()
             )
         );
-        blocktree.set_root(0, 0).unwrap();
-        blocktree.set_root(1, 0).unwrap();
+        blocktree.config_base(0, 0).unwrap();
+        blocktree.config_base(1, 0).unwrap();
 
         let (bank_forks, bank_forks_info, _) =
             process_blocktree(&genesis_block, &blocktree, None).unwrap();
@@ -714,10 +714,10 @@ pub mod tests {
         }
 
         // Set a root on the last slot of the last confirmed epoch
-        blocktree.set_root(last_slot, 0).unwrap();
+        blocktree.config_base(last_slot, 0).unwrap();
 
         // Set a root on the next slot of the confrimed epoch
-        blocktree.set_root(last_slot + 1, last_slot).unwrap();
+        blocktree.config_base(last_slot + 1, last_slot).unwrap();
 
         // Check that we can properly restart the ledger / leader scheduler doesn't fail
         let (bank_forks, bank_forks_info, _) =
@@ -853,7 +853,7 @@ pub mod tests {
         let blocktree =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
         blocktree
-            .write_entries(1, 0, 0, genesis_block.ticks_per_slot, &entries)
+            .record_items(1, 0, 0, genesis_block.ticks_per_slot, &entries)
             .unwrap();
         let entry_height = genesis_block.ticks_per_slot + entries.len() as u64;
         let (bank_forks, bank_forks_info, _) =

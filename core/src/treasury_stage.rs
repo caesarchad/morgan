@@ -895,7 +895,7 @@ mod tests {
             banking_stage.join().unwrap();
             poh_service.join().unwrap();
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -943,7 +943,7 @@ mod tests {
             assert_eq!(entries[entries.len() - 1].hash, bank.last_blockhash());
             banking_stage.join().unwrap();
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1051,7 +1051,7 @@ mod tests {
             drop(entry_receiver);
             banking_stage.join().unwrap();
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1150,7 +1150,7 @@ mod tests {
             // the account balance below zero before the credit is added.
             assert_eq!(bank.get_balance(&alice.pubkey()), 1);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1234,7 +1234,7 @@ mod tests {
             let (_, entries) = entry_receiver.recv().unwrap();
             assert_eq!(entries[0].0.transactions.len(), transactions.len() - 1);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1545,7 +1545,7 @@ mod tests {
 
             assert_eq!(bank.get_balance(&pubkey), 1);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1599,7 +1599,7 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(unprocessed.len(), 1);
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]

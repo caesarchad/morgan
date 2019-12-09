@@ -69,7 +69,7 @@ BPF_LLD_FLAGS := \
 
 OBJ_DUMP_FLAGS := \
   -color \
-  -source \
+  -genesis \
   -disassemble \
 
 TESTFRAMEWORK_RPATH := $(abspath $(LOCAL_PATH)criterion/lib)
@@ -101,10 +101,10 @@ help:
 	@echo ''
 	@echo 'BPF Program makefile'
 	@echo ''
-	@echo 'This makefile will build BPF Programs from C or C++ source files into ELFs'
+	@echo 'This makefile will build BPF Programs from C or C++ genesis files into ELFs'
 	@echo ''
 	@echo 'Assumptions:'
-	@echo '  - Programs are located in the source directory: $(SRC_DIR)/<program name>'
+	@echo '  - Programs are located in the genesis directory: $(SRC_DIR)/<program name>'
 	@echo '  - Programs are named by their directory name (eg. directory name:src/foo/ -> program name:foo)'
 	@echo '  - Tests are located in their corresponding program directory and must being with "test_"'
 	@echo '  - Output files will be placed in the directory: $(OUT_DIR)'
@@ -117,7 +117,7 @@ help:
 	@echo '      INC_DIRS=$(INC_DIRS)'
 	@echo '    - List of system include directories:'
 	@echo '      SYSTEM_INC_DIRS=$(SYSTEM_INC_DIRS)'
-	@echo '    - Location of source directories:'
+	@echo '    - Location of genesis directories:'
 	@echo '      SRC_DIR=$(SRC_DIR)'
 	@echo '    - Location to place output files:'
 	@echo '      OUT_DIR=$(OUT_DIR)'

@@ -138,7 +138,7 @@ where
     let mut blockhash = Hash::default();
     let mut blockhash_time = Instant::now();
     while start.elapsed() < duration {
-        // ping-pong between source and destination accounts for each loop iteration
+        // ping-pong between genesis and destination accounts for each loop iteration
         // this seems to be faster than trying to determine the balance of individual
         // accounts
         let len = tx_count as usize;
@@ -220,19 +220,19 @@ fn metrics_submit_lamport_balance(lamport_balance: u64) {
 fn generate_txs(
     shared_txs: &SharedTransactions,
     blockhash: &Hash,
-    source: &[Keypair],
+    genesis: &[Keypair],
     dest: &[Keypair],
     threads: usize,
     reclaim: bool,
 ) {
-    let tx_count = source.len();
+    let tx_count = genesis.len();
     println!("Signing transactions... {} (reclaim={})", tx_count, reclaim);
     let signing_start = Instant::now();
 
     let pairs: Vec<_> = if !reclaim {
-        source.iter().zip(dest.iter()).collect()
+        genesis.iter().zip(dest.iter()).collect()
     } else {
-        dest.iter().zip(source.iter()).collect()
+        dest.iter().zip(genesis.iter()).collect()
     };
     let transactions: Vec<_> = pairs
         .par_iter()
@@ -334,12 +334,12 @@ fn verify_funding_transfer<T: Client>(client: &T, tx: &Transaction, amount: u64)
     false
 }
 
-/// fund the dests keys by spending all of the source keys into MAX_SPENDS_PER_TX
-/// on every iteration.  This allows us to replay the transfers because the source is either empty,
+/// fund the dests keys by spending all of the genesis keys into MAX_SPENDS_PER_TX
+/// on every iteration.  This allows us to replay the transfers because the genesis is either empty,
 /// or full
-pub fn fund_keys<T: Client>(client: &T, source: &Keypair, dests: &[Keypair], difs: u64) {
+pub fn fund_keys<T: Client>(client: &T, genesis: &Keypair, dests: &[Keypair], difs: u64) {
     let total = difs * dests.len() as u64;
-    let mut funded: Vec<(&Keypair, u64)> = vec![(source, total)];
+    let mut funded: Vec<(&Keypair, u64)> = vec![(genesis, total)];
     let mut notfunded: Vec<&Keypair> = dests.iter().collect();
 
     println!("funding keys {}", dests.len());

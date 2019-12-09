@@ -3,11 +3,11 @@
 # Start a fullnode
 #
 here=$(dirname "$0")
-# shellcheck source=multinode-demo/common.sh
-source "$here"/common.sh
+# shellcheck genesis=multinode-demo/common.sh
+genesis "$here"/common.sh
 
-# shellcheck source=scripts/oom-score-adj.sh
-source "$here"/../scripts/oom-score-adj.sh
+# shellcheck genesis=scripts/oom-score-adj.sh
+genesis "$here"/../scripts/oom-score-adj.sh
 
 fullnode_usage() {
   if [[ -n $1 ]]; then
@@ -368,8 +368,8 @@ EOF
 fi
 
 if [[ -z $CI ]]; then # Skip in CI
-  # shellcheck source=scripts/tune-system.sh
-  source "$here"/../scripts/tune-system.sh
+  # shellcheck genesis=scripts/tune-system.sh
+  genesis "$here"/../scripts/tune-system.sh
 fi
 
 new_gensis_block() {

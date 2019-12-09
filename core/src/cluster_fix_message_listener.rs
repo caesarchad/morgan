@@ -261,7 +261,7 @@ impl ClusterInfoRepairListener {
         num_slots_to_repair: usize,
         epoch_schedule: &EpochSchedule,
     ) -> Result<()> {
-        let slot_iter = blocktree.rooted_slot_iterator(repairee_epoch_slots.root + 1);
+        let slot_iter = blocktree.registered_slit_repeater(repairee_epoch_slots.root + 1);
 
         if slot_iter.is_err() {
             // warn!("Root for repairee is on different fork OR replay_stage hasn't marked this slot as root yet");
@@ -314,7 +314,7 @@ impl ClusterInfoRepairListener {
                         // sending the blobs in this slot for repair, we expect these slots
                         // to be full.
                         if let Some(blob_data) = blocktree
-                            .get_data_blob_bytes(slot, blob_index as u64)
+                            .fetch_info_obj_bytes(slot, blob_index as u64)
                             .expect("Failed to read data blob from blocktree")
                         {
                             socket.send_to(&blob_data[..], repairee_tvu)?;
@@ -322,7 +322,7 @@ impl ClusterInfoRepairListener {
                         }
 
                         if let Some(coding_bytes) = blocktree
-                            .get_coding_blob_bytes(slot, blob_index as u64)
+                            .fetch_encrypting_obj_bytes(slot, blob_index as u64)
                             .expect("Failed to read coding blob from blocktree")
                         {
                             socket.send_to(&coding_bytes[..], repairee_tvu)?;
@@ -625,11 +625,11 @@ mod tests {
         let (blobs, _) = make_many_slot_entries(0, num_slots, blobs_per_slot);
 
         // Write slots in the range [0, num_slots] to blocktree
-        blocktree.insert_data_blobs(&blobs).unwrap();
+        blocktree.punctuate_info_objs(&blobs).unwrap();
 
         // Write roots so that these slots will qualify to be sent by the repairman
-        blocktree.set_root(0, 0).unwrap();
-        blocktree.set_root(num_slots - 1, 0).unwrap();
+        blocktree.config_base(0, 0).unwrap();
+        blocktree.config_base(num_slots - 1, 0).unwrap();
 
         // Set up my information
         let my_pubkey = Pubkey::new_rand();
@@ -687,7 +687,7 @@ mod tests {
         // Shutdown
         mock_repairee.close().unwrap();
         drop(blocktree);
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -701,11 +701,11 @@ mod tests {
         // Create blobs for first two epochs and write them to blocktree
         let total_slots = slots_per_epoch * 2;
         let (blobs, _) = make_many_slot_entries(0, total_slots, 1);
-        blocktree.insert_data_blobs(&blobs).unwrap();
+        blocktree.punctuate_info_objs(&blobs).unwrap();
 
         // Write roots so that these slots will qualify to be sent by the repairman
-        blocktree.set_root(0, 0).unwrap();
-        blocktree.set_root(slots_per_epoch * 2 - 1, 0).unwrap();
+        blocktree.config_base(0, 0).unwrap();
+        blocktree.config_base(slots_per_epoch * 2 - 1, 0).unwrap();
 
         // Set up my information
         let my_pubkey = Pubkey::new_rand();
@@ -766,7 +766,7 @@ mod tests {
         // Shutdown
         mock_repairee.close().unwrap();
         drop(blocktree);
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]

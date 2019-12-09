@@ -260,7 +260,7 @@ pub mod tests {
 
         let blocktree_path = get_tmp_ledger_path!();
         let (blocktree, l_receiver, completed_slots_receiver) =
-            BlockBufferPool::open_with_signal(&blocktree_path)
+            BlockBufferPool::open_by_message(&blocktree_path)
                 .expect("Expected to successfully open ledger");
         let blocktree = Arc::new(blocktree);
         let bank = bank_forks.working_bank();

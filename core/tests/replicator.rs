@@ -93,7 +93,7 @@ fn check_miner_connection(storage_miner_info: &ContactInfo) {
                         module_path!().to_string()
                     )
                 );
-                let entries = BlockBufferPool::deserialize_blob_data(&br.data()).unwrap();
+                let entries = BlockBufferPool::deserialize_obj_info(&br.data()).unwrap();
                 for entry in &entries {
                     println!("{}",
                         printLn(
@@ -215,8 +215,11 @@ fn test_storage_miner_startup_leader_hang() {
         assert!(storage_miner_res.is_err());
     }
 
-    let _ignored = BlockBufferPool::destroy(&leader_ledger_path);
-    let _ignored = BlockBufferPool::destroy(&miner_ledger_path);
+
+    let _ignored = BlockBufferPool::destruct(&leader_ledger_path);
+    let _ignored = BlockBufferPool::destruct(&miner_ledger_path);
+
+
     let _ignored = remove_dir_all(&leader_ledger_path);
     let _ignored = remove_dir_all(&miner_ledger_path);
 }

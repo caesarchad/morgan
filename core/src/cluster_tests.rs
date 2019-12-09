@@ -46,7 +46,7 @@ pub fn spend_and_verify_all_nodes(
         let client = create_client(ingress_node.client_facing_addr(), FULLNODE_PORT_RANGE);
         let bal = client
             .poll_get_balance(&funding_keypair.pubkey())
-            .expect("balance in source");
+            .expect("balance in genesis");
         assert!(bal > 0);
         let (blockhash, _fee_calculator) = client.get_recent_blockhash().unwrap();
         let mut transaction =
@@ -68,7 +68,7 @@ pub fn send_many_transactions(node: &ContactInfo, funding_keypair: &Keypair, num
         let random_keypair = Keypair::new();
         let bal = client
             .poll_get_balance(&funding_keypair.pubkey())
-            .expect("balance in source");
+            .expect("balance in genesis");
         assert!(bal > 0);
         let (blockhash, _fee_calculator) = client.get_recent_blockhash().unwrap();
         let mut transaction =
@@ -95,9 +95,9 @@ pub fn fullnode_exit(entry_point_info: &ContactInfo, nodes: usize) {
 
 pub fn verify_ledger_ticks(ledger_path: &str, ticks_per_slot: usize) {
     let ledger = BlockBufferPool::open_ledger_file(ledger_path).unwrap();
-    let zeroth_slot = ledger.get_slot_entries(0, 0, None).unwrap();
+    let zeroth_slot = ledger.fetch_slit_items(0, 0, None).unwrap();
     let last_id = zeroth_slot.last().unwrap().hash;
-    let next_slots = ledger.get_slots_since(&[0]).unwrap().remove(&0).unwrap();
+    let next_slots = ledger.fetch_slits_from(&[0]).unwrap().remove(&0).unwrap();
     let mut pending_slots: Vec<_> = next_slots
         .into_iter()
         .map(|slot| (slot, 0, last_id))
@@ -105,7 +105,7 @@ pub fn verify_ledger_ticks(ledger_path: &str, ticks_per_slot: usize) {
     while !pending_slots.is_empty() {
         let (slot, parent_slot, last_id) = pending_slots.pop().unwrap();
         let next_slots = ledger
-            .get_slots_since(&[slot])
+            .fetch_slits_from(&[slot])
             .unwrap()
             .remove(&slot)
             .unwrap();
@@ -253,7 +253,7 @@ pub fn kill_entry_and_spend_and_verify_rest(
         let client = create_client(ingress_node.client_facing_addr(), FULLNODE_PORT_RANGE);
         let balance = client
             .poll_get_balance(&funding_keypair.pubkey())
-            .expect("balance in source");
+            .expect("balance in genesis");
         assert_ne!(balance, 0);
 
         let mut result = Ok(());
@@ -375,7 +375,7 @@ fn skip_whitespace_checks(file: &Path) -> bool {
 }
 
 fn get_and_verify_slot_entries(blocktree: &BlockBufferPool, slot: u64, last_entry: &Hash) -> Vec<Entry> {
-    let entries = blocktree.get_slot_entries(slot, 0, None).unwrap();
+    let entries = blocktree.fetch_slit_items(slot, 0, None).unwrap();
     assert!(entries.verify(last_entry));
     entries
 }

@@ -1,4 +1,4 @@
-# |source| me
+# |genesis| me
 
 upload-ci-artifact() {
   echo "--- artifact: $1"

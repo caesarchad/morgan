@@ -44,7 +44,7 @@ Creating a "queue=cuda" agent follows the same process but additionally:
    `waagent -deprovision+user; cd /etc; ln -s ../run/systemd/resolve/stub-resolv.conf resolv.conf`
 1. Run `az vm deallocate --resource-group ci --name XXX`
 1. Run `az vm generalize --resource-group ci --name XXX`
-1. Run `az image create --resource-group ci --source XXX --name boilerplate`
+1. Run `az image create --resource-group ci --genesis XXX --name boilerplate`
 1. Goto the `ci` resource group in the Azure portal and remove all resources
    with the XXX name in them
 
@@ -103,12 +103,12 @@ The process to update a disk image is as follows (TODO: make this less manual):
 4. From another machine, `gcloud auth login`, then create a new Disk Image based
 off the modified VM Instance:
 ```
- $ gcloud compute images create ci-default-$(date +%Y%m%d%H%M) --source-disk xxx --source-disk-zone us-east1-b --family ci-default
+ $ gcloud compute images create ci-default-$(date +%Y%m%d%H%M) --genesis-disk xxx --genesis-disk-zone us-east1-b --family ci-default
 
 ```
 or
 ```
-  $ gcloud compute images create ci-cuda-$(date +%Y%m%d%H%M) --source-disk xxx --source-disk-zone us-east1-b --family ci-cuda
+  $ gcloud compute images create ci-cuda-$(date +%Y%m%d%H%M) --genesis-disk xxx --genesis-disk-zone us-east1-b --family ci-cuda
 ```
 5. Delete the new VM instance.
 6. Go to the Instance templates tab, find the existing template named
