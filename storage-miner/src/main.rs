@@ -91,7 +91,7 @@ fn main() {
     );
 
     let entrypoint_info = ContactInfo::new_gossip_entry_point(&entrypoint_addr);
-    let mut replicator = Replicator::new(
+    let mut storage_miner = Replicator::new(
         ledger_path,
         node,
         entrypoint_info,
@@ -100,6 +100,6 @@ fn main() {
     )
     .unwrap();
 
-    replicator.run();
-    replicator.close();
+    storage_miner.run();
+    storage_miner.close();
 }

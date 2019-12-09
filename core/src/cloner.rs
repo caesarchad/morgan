@@ -132,7 +132,7 @@ fn create_request_processor(
     let t_receiver = receiver(storage_socket.clone(), exit, s_reader);
     thread_handles.push(t_receiver);
 
-    let t_responder = responder("replicator-responder", storage_socket.clone(), r_responder);
+    let t_responder = responder("storage-miner-responder", storage_socket.clone(), r_responder);
     thread_handles.push(t_responder);
 
     let exit = exit.clone();
@@ -169,14 +169,14 @@ fn create_request_processor(
 }
 
 impl Replicator {
-    /// Returns a Result that contains a replicator on success
+    /// Returns a Result that contains a storage-miner on success
     ///
     /// # Arguments
     /// * `ledger_path` - path to where the ledger will be stored.
     /// Causes panic if none
-    /// * `node` - The replicator node
+    /// * `node` - The storage-miner node
     /// * `cluster_entrypoint` - ContactInfo representing an entry into the network
-    /// * `keypair` - Keypair for this replicator
+    /// * `keypair` - Keypair for this storage-miner
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         ledger_path: &str,
@@ -406,7 +406,7 @@ impl Replicator {
                 module_path!().to_string()
             )
         );
-        // Remove replicator from the data plane
+        // Remove storage-miner from the data plane
         let mut contact_info = node_info.clone();
         contact_info.tvu = "0.0.0.0:0".parse().unwrap();
         contact_info.wallclock = timestamp();
@@ -489,7 +489,7 @@ impl Replicator {
         keypair: &Keypair,
         storage_keypair: &Keypair,
     ) -> Result<()> {
-        // make sure replicator has some balance
+        // make sure storage-miner has some balance
         if client.poll_get_balance(&keypair.pubkey())? == 0 {
             Err(io::Error::new(
                 io::ErrorKind::Other,

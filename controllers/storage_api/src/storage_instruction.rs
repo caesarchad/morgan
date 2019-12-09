@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageInstruction {
-    /// Initialize the account as a mining pool, validator or replicator
+    /// Initialize the account as a mining pool, validator or storage-miner
     ///
     /// Expects 1 Account:
     ///    0 - Account to be initialized

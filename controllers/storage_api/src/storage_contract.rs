@@ -378,7 +378,7 @@ impl<'a> StorageAccount<'a> {
     }
 }
 
-/// Store the result of a proof validation into the replicator account
+/// Store the result of a proof validation into the storage-miner account
 fn store_validation_result(
     storage_account: &mut StorageAccount,
     segment: usize,

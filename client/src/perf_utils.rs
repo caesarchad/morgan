@@ -11,11 +11,11 @@ use chrono::prelude::*;
 
 #[derive(Default)]
 pub struct SampleStats {
-    /// Maximum TPS reported by this node
+    
     pub tps: f32,
-    /// Total time taken for those txs
+    
     pub elapsed: Duration,
-    /// Total transactions reported by this node
+    
     pub txs: u64,
 }
 
@@ -42,8 +42,6 @@ pub fn sample_txs<T>(
         let mut txs = client.get_transaction_count().expect("transaction count");
 
         if txs < last_txs {
-            // info!("{}",
-            // Info(format!("Expected txs({}) >= last_txs({})", txs, last_txs).to_string()));
             let info:String = format!("Expected txs({}) >= last_txs({})", txs, last_txs).to_string();
             println!("{}",
                 printLn(
@@ -62,18 +60,7 @@ pub fn sample_txs<T>(
         if tps > max_tps {
             max_tps = tps;
         }
-        // info!(
-        //     "{}", 
-        //     Info(
-        //         format!(
-        //             "Sampler {:9.2} TPS, Transactions: {:6}, Total transactions: {} over {} s", 
-        //             tps,
-        //             sample_txs,
-        //             total_txs,
-        //             total_elapsed.as_secs()
-        //         ).to_string()
-        //     )
-        // );
+        
         let info:String = format!(
             "Sampler {:9.2} TPS, Transactions: {:6}, Total transactions: {} over {} s", 
             tps,
@@ -88,17 +75,6 @@ pub fn sample_txs<T>(
             )
         );
 
-        // let local: DateTime<Local> = Local::now();
-        // println!("{}: {}",
-        //     local,
-        //     Green.bold().paint(format!(
-        //         "Sampler {:9.2} TPS, Transactions: {:6}, Total transactions: {} over {} s", 
-        //         tps,
-        //         sample_txs,
-        //         total_txs,
-        //         total_elapsed.as_secs())
-        //     )
-        // );
         if exit_signal.load(Ordering::Relaxed) {
             let stats = SampleStats {
                 tps: max_tps,

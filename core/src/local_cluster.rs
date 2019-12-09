@@ -224,8 +224,8 @@ impl LocalCluster {
             node.join().unwrap();
         }
 
-        while let Some(replicator) = self.replicators.pop() {
-            replicator.close();
+        while let Some(storage_miner) = self.replicators.pop() {
+            storage_miner.close();
         }
     }
 
@@ -332,7 +332,7 @@ impl LocalCluster {
             FULLNODE_PORT_RANGE,
         );
 
-        // Give the replicator some difs to setup its storage accounts
+        // Give the storage_miner some difs to setup its storage accounts
         Self::transfer_with_client(
             &client,
             &self.funding_keypair,
@@ -344,7 +344,7 @@ impl LocalCluster {
         Self::setup_storage_account(&client, &storage_keypair, &replicator_keypair, true).unwrap();
 
         let (replicator_ledger_path, _blockhash) = create_new_tmp_ledger!(&self.genesis_block);
-        let replicator = Replicator::new(
+        let storage_miner = Replicator::new(
             &replicator_ledger_path,
             replicator_node,
             self.entry_point_info.clone(),
@@ -353,7 +353,7 @@ impl LocalCluster {
         )
         .unwrap_or_else(|err| panic!("Replicator::new() failed: {:?}", err));
 
-        self.replicators.push(replicator);
+        self.replicators.push(storage_miner);
         self.replicator_infos.insert(
             replicator_pubkey,
             ReplicatorInfo::new(storage_pubkey, replicator_ledger_path),
@@ -521,10 +521,10 @@ impl LocalCluster {
         client: &ThinClient,
         storage_keypair: &Keypair,
         from_keypair: &Arc<Keypair>,
-        replicator: bool,
+        storage_miner: bool,
     ) -> Result<()> {
         let message = Message::new_with_payer(
-            if replicator {
+            if storage_miner {
                 storage_instruction::create_replicator_storage_account(
                     &from_keypair.pubkey(),
                     &storage_keypair.pubkey(),

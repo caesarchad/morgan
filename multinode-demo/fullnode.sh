@@ -19,7 +19,7 @@ fullnode_usage() {
 Fullnode Usage:
 usage: $0 [--blockstream PATH] [--init-complete-file FILE] [--label LABEL] [--stake DIFS] [--no-voting] [--rpc-port port] [rsync network path to bootstrap leader configuration] [cluster entry point]
 
-Start a validator or a replicator
+Start a validator or a storage-miner
 
   --blockstream PATH        - open blockstream at this unix domain socket location
   --init-complete-file FILE - create this file, if it doesn't already exist, once node initialization is complete
@@ -147,9 +147,9 @@ setup_replicator_account() {
   else
     $morgan_wallet --keypair "$node_keypair_path" --url "http://$entrypoint_ip:10099" airdrop "$stake" || return $?
 
-    # Setup replicator storage account
+    # Setup storage-miner storage account
     $morgan_wallet --keypair "$node_keypair_path" --url "http://$entrypoint_ip:10099" \
-      create-replicator-storage-account "$storage_pubkey" || return $?
+      create-storage-miner-storage-account "$storage_pubkey" || return $?
 
     touch "$configured_flag"
   fi
@@ -187,8 +187,8 @@ while [[ -n $1 ]]; do
     elif [[ $1 = --bootstrap-leader ]]; then
       node_type=bootstrap_leader
       shift
-    elif [[ $1 = --replicator ]]; then
-      node_type=replicator
+    elif [[ $1 = --storage-miner ]]; then
+      node_type=storage-miner
       shift
     elif [[ $1 = --validator ]]; then
       node_type=validator
@@ -241,7 +241,7 @@ while [[ -n $1 ]]; do
 done
 
 
-if [[ $node_type = replicator ]]; then
+if [[ $node_type = storage-miner ]]; then
   if [[ ${#positional_args[@]} -gt 2 ]]; then
     fullnode_usage "$@"
   fi
@@ -249,10 +249,10 @@ if [[ $node_type = replicator ]]; then
   read -r entrypoint entrypoint_address shift < <(find_entrypoint "${positional_args[@]}")
   shift "$shift"
 
-  : "${identity_keypair_path:=$MORGAN_CONFIG_DIR/replicator-keypair$label.json}"
-  storage_keypair_path="$MORGAN_CONFIG_DIR"/replicator-storage-keypair$label.json
-  ledger_config_dir=$MORGAN_CONFIG_DIR/replicator-ledger$label
-  configured_flag=$MORGAN_CONFIG_DIR/replicator$label.configured
+  : "${identity_keypair_path:=$MORGAN_CONFIG_DIR/storage-miner-keypair$label.json}"
+  storage_keypair_path="$MORGAN_CONFIG_DIR"/storage-miner-storage-keypair$label.json
+  ledger_config_dir=$MORGAN_CONFIG_DIR/storage-miner-ledger$label
+  configured_flag=$MORGAN_CONFIG_DIR/storage-miner$label.configured
 
   mkdir -p "$MORGAN_CONFIG_DIR"
   [[ -r "$identity_keypair_path" ]] || $morgan_keybot -o "$identity_keypair_path"
@@ -263,12 +263,12 @@ if [[ $node_type = replicator ]]; then
 
   cat <<EOF
 ======================[ $node_type configuration ]======================
-replicator pubkey: $identity_pubkey
+storage-miner pubkey: $identity_pubkey
 storage pubkey: $storage_pubkey
 ledger path: $ledger_config_dir
 ======================================================================
 EOF
-  # program=morgan-replicator
+  # program=morgan-storage-miner
   program=$morgan_replicator
   default_arg --entrypoint "$entrypoint_address"
   default_arg --identity "$identity_keypair_path"
@@ -336,7 +336,7 @@ else
 fi
 
 
-if [[ $node_type != replicator ]]; then
+if [[ $node_type != storage-miner ]]; then
   identity_pubkey=$($morgan_keybot pubkey "$identity_keypair_path")
   vote_pubkey=$($morgan_keybot pubkey "$vote_keypair_path")
   storage_pubkey=$($morgan_keybot pubkey "$storage_keypair_path")
@@ -410,7 +410,7 @@ while true; do
         "$stake_keypair_path" \
         "$storage_keypair_path" \
         "$stake"
-    elif [[ $node_type = replicator ]]; then
+    elif [[ $node_type = storage-miner ]]; then
       setup_replicator_account "${entrypoint_address%:*}" \
         "$identity_keypair_path" \
         "$storage_keypair_path" \

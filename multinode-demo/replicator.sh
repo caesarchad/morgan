@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
 here=$(dirname "$0")
-exec "$here"/fullnode.sh --replicator "$@"
+exec "$here"/fullnode.sh --storage-miner "$@"

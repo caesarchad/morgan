@@ -1,11 +1,11 @@
 [package]
-authors = ["Morgan Maintainers <maintainers@morgan.com>"]
+authors = ["bitconch core dev <dev@bitconch.io>"]
 edition = "2018"
-name = "morgan-replicator"
-version = "0.15.3"
-repository = "https://github.com/morgan-labs/morgan"
+name = "bitconch-storage-miner"
+version = "1.2.0"
+repository = "https://github.com/bitconch/bitconch-core"
 license = "Apache-2.0"
-homepage = "https://morgan.com/"
+homepage = "https://bitconch.io/"
 
 [dependencies]
 clap = "2.33.0"

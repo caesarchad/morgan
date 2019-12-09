@@ -311,7 +311,7 @@ mod tests {
             Ok(_)
         );
 
-        // submit proofs 5 proofs for each replicator for segment 0
+        // submit proofs 5 proofs for each storage-miner for segment 0
         let mut checked_proofs: HashMap<_, Vec<_>> = HashMap::new();
         for slot in 0..5 {
             checked_proofs

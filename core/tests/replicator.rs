@@ -49,7 +49,7 @@ fn get_slot_height(to: SocketAddr) -> u64 {
 }
 
 fn download_from_replicator(replicator_info: &ContactInfo) {
-    // Create a client which downloads from the replicator and see that it
+    // Create a client which downloads from the storage-miner and see that it
     // can respond with blobs.
     let tn = Node::new_localhost();
     let cluster_info = ClusterInfo::new_with_invalid_keypair(tn.info.clone());
@@ -126,10 +126,10 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
 /// Then download blobs from one of them.
 fn run_replicator_startup_basic(num_nodes: usize, num_replicators: usize) {
     morgan_logger::setup();
-    // info!("{}", Info(format!("starting replicator test").to_string()));
+    // info!("{}", Info(format!("starting storage-miner test").to_string()));
     println!("{}",
         printLn(
-            format!("starting replicator test").to_string(),
+            format!("starting storage-miner test").to_string(),
             module_path!().to_string()
         )
     );
@@ -188,10 +188,10 @@ fn test_replicator_startup_leader_hang() {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     morgan_logger::setup();
-    // info!("{}", Info(format!("starting replicator test").to_string()));
+    // info!("{}", Info(format!("starting storage-miner test").to_string()));
     println!("{}",
         printLn(
-            format!("starting replicator test").to_string(),
+            format!("starting storage-miner test").to_string(),
             module_path!().to_string()
         )
     );
@@ -203,10 +203,10 @@ fn test_replicator_startup_leader_hang() {
         let replicator_keypair = Arc::new(Keypair::new());
         let storage_keypair = Arc::new(Keypair::new());
 
-        // info!("{}", Info(format!("starting replicator node").to_string()));
+        // info!("{}", Info(format!("starting storage-miner node").to_string()));
         println!("{}",
             printLn(
-                format!("starting replicator node").to_string(),
+                format!("starting storage-miner node").to_string(),
                 module_path!().to_string()
             )
         );
@@ -235,10 +235,10 @@ fn test_replicator_startup_leader_hang() {
 #[test]
 fn test_replicator_startup_ledger_hang() {
     morgan_logger::setup();
-    // info!("{}", Info(format!("starting replicator test").to_string()));
+    // info!("{}", Info(format!("starting storage-miner test").to_string()));
     println!("{}",
         printLn(
-            format!("starting replicator test").to_string(),
+            format!("starting storage-miner test").to_string(),
             module_path!().to_string()
         )
     );
@@ -246,10 +246,10 @@ fn test_replicator_startup_ledger_hang() {
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
     let cluster = LocalCluster::new_with_equal_stakes(2, 10_000, 100);;
 
-    // info!("{}", Info(format!("starting replicator node").to_string()));
+    // info!("{}", Info(format!("starting storage-miner node").to_string()));
     println!("{}",
         printLn(
-            format!("starting replicator node").to_string(),
+            format!("starting storage-miner node").to_string(),
             module_path!().to_string()
         )
     );
@@ -292,7 +292,7 @@ fn test_account_setup() {
         num_nodes + num_replicators as usize,
     )
     .unwrap();
-    // now check that the cluster actually has accounts for the replicator.
+    // now check that the cluster actually has accounts for the storage-miner.
     let client = create_client(
         cluster.entry_point_info.client_facing_addr(),
         FULLNODE_PORT_RANGE,

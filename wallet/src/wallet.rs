@@ -269,7 +269,7 @@ pub fn parse_command(
                 difs,
             ))
         }
-        ("create-replicator-storage-account", Some(matches)) => {
+        ("create-storage-miner-storage-account", Some(matches)) => {
             let storage_account_pubkey = pubkey_of(matches, "storage_account_pubkey").unwrap();
             Ok(WalletCommand::CreateReplicatorStorageAccount(
                 storage_account_pubkey,
@@ -1499,8 +1499,8 @@ pub fn app<'ab, 'v>(name: &str, about: &'ab str, version: &'v str) -> App<'ab, '
                 ),
         )
         .subcommand(
-            SubCommand::with_name("create-replicator-storage-account")
-                .about("Create a replicator storage account")
+            SubCommand::with_name("create-storage-miner-storage-account")
+                .about("Create a storage-miner storage account")
                 .arg(
                     Arg::with_name("storage_account_pubkey")
                         .index(1)

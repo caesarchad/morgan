@@ -1,5 +1,4 @@
-//! The `poh_service` module implements a service that records the passing of
-//! "ticks", a measure of time in the PoH stream
+//! The water_clock_service implements a system-wide clock to measure the passage of time
 use crate::water_clock_recorder::PohRecorder;
 use crate::service::Service;
 use core_affinity;
@@ -14,12 +13,7 @@ pub struct PohService {
     tick_producer: JoinHandle<()>,
 }
 
-// Number of hashes to batch together.
-// * If this number is too small, PoH hash rate will suffer.
-// * The larger this number is from 1, the speed of recording transactions will suffer due to lock
-//   contention with the PoH hashing within `tick_producer()`.
-//
-// See benches/poh.rs for some benchmarks that attempt to justify this magic number.
+
 pub const NUM_HASHES_PER_BATCH: u64 = 1;
 
 impl PohService {
@@ -36,9 +30,6 @@ impl PohService {
                 if poh_config.hashes_per_tick.is_none() {
                     Self::sleepy_tick_producer(poh_recorder, &poh_config, &poh_exit_);
                 } else {
-                    // PoH service runs in a tight loop, generating hashes as fast as possible.
-                    // Let's dedicate one of the CPU cores to this thread so that it can gain
-                    // from cache performance.
                     if let Some(cores) = core_affinity::get_core_ids() {
                         core_affinity::set_for_current(cores[0]);
                     }
@@ -66,7 +57,6 @@ impl PohService {
         let poh = poh_recorder.lock().unwrap().poh.clone();
         loop {
             if poh.lock().unwrap().hash(NUM_HASHES_PER_BATCH) {
-                // Lock PohRecorder only for the final hash...
                 poh_recorder.lock().unwrap().tick();
                 if poh_exit.load(Ordering::Relaxed) {
                     break;
@@ -74,6 +64,7 @@ impl PohService {
             }
         }
     }
+
 }
 
 impl Service for PohService {
@@ -93,11 +84,7 @@ where
     'buf: 'c,
     TSocket: AsyncWrite + Unpin,
 {
-    //let len = buf
-    //    .len()
-    //    .try_into()
-    //     TODO Maybe use our own Error Type?
-    //    .map_err(|_e| std::io::Error::new(std::io::ErrorKind::Other, "Too big"))?;
+    
 
     Ok(())
 }

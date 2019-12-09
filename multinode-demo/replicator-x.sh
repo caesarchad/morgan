@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Start a dynamically-configured replicator
+# Start a dynamically-configured storage-miner
 #
 
 here=$(dirname "$0")
-exec "$here"/replicator.sh --label x$$ "$@"
+exec "$here"/storage-miner.sh --label x$$ "$@"
