@@ -1,7 +1,7 @@
 [package]
 authors = ["bitconch core dev <dev@bitconch.io>"]
 edition = "2018"
-name = "bitconch-storage-miner"
+name = "morgan-storage-miner"
 version = "1.2.0"
 repository = "https://github.com/bitconch/bitconch-core"
 license = "Apache-2.0"

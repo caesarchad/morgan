@@ -1,7 +1,7 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg};
 use morgan::cluster_message::{Node, FULLNODE_PORT_RANGE};
 use morgan::connection_info::ContactInfo;
-use morgan::cloner::Replicator;
+use morgan::cloner::StorageMiner;
 use morgan::socketaddr;
 use morgan_interface::signature::{read_keypair, Keypair, KeypairUtil};
 use std::process::exit;
@@ -82,7 +82,7 @@ fn main() {
         addr
     };
     let node =
-        Node::new_replicator_with_external_ip(&keypair.pubkey(), &gossip_addr, FULLNODE_PORT_RANGE);
+        Node::new_miner_with_external_ip(&keypair.pubkey(), &gossip_addr, FULLNODE_PORT_RANGE);
 
     println!(
         "replicating the data with keypair={:?} gossip_addr={:?}",
@@ -91,7 +91,7 @@ fn main() {
     );
 
     let entrypoint_info = ContactInfo::new_gossip_entry_point(&entrypoint_addr);
-    let mut storage_miner = Replicator::new(
+    let mut storage_miner = StorageMiner::new(
         ledger_path,
         node,
         entrypoint_info,

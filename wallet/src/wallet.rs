@@ -651,7 +651,7 @@ fn process_create_storage_mining_pool_account(
     Ok(signature_str.to_string())
 }
 
-fn process_create_replicator_storage_account(
+fn process_create_miner_storage_account(
     rpc_client: &RpcClient,
     config: &WalletConfig,
     storage_account_pubkey: &Pubkey,
@@ -1058,7 +1058,7 @@ pub fn process_command(config: &WalletConfig) -> ProcessResult {
         }
 
         WalletCommand::CreateMinerStorageAccount(storage_account_pubkey) => {
-            process_create_replicator_storage_account(&rpc_client, config, &storage_account_pubkey)
+            process_create_miner_storage_account(&rpc_client, config, &storage_account_pubkey)
         }
 
         WalletCommand::CreateValidatorStorageAccount(storage_account_pubkey) => {

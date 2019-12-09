@@ -244,7 +244,7 @@ impl ClusterInfo {
     pub fn contact_info_trace(&self) -> String {
         let now = timestamp();
         let mut spy_nodes = 0;
-        let mut replicators = 0;
+        let mut miners = 0;
         let my_pubkey = self.my_data().id;
         let nodes: Vec<_> = self
             .all_peers()
@@ -252,8 +252,8 @@ impl ClusterInfo {
             .map(|(node, last_updated)| {
                 if Self::is_spy_node(&node) {
                     spy_nodes += 1;
-                } else if Self::is_replicator(&node) {
-                    replicators += 1;
+                } else if Self::is_storage_miner(&node) {
+                    miners += 1;
                 }
                 fn addr_to_string(addr: &SocketAddr) -> String {
                     if ContactInfo::is_valid_address(addr) {
@@ -283,9 +283,9 @@ impl ClusterInfo {
              {}\
              Nodes: {}{}{}",
             nodes.join(""),
-            nodes.len() - spy_nodes - replicators,
-            if replicators > 0 {
-                format!("\nReplicators: {}", replicators)
+            nodes.len() - spy_nodes - miners,
+            if miners > 0 {
+                format!("\nStorage Miners: {}", miners)
             } else {
                 "".to_string()
             },
@@ -496,7 +496,7 @@ impl ClusterInfo {
             && !ContactInfo::is_valid_address(&contact_info.storage_addr)
     }
 
-    pub fn is_replicator(contact_info: &ContactInfo) -> bool {
+    pub fn is_storage_miner(contact_info: &ContactInfo) -> bool {
         ContactInfo::is_valid_address(&contact_info.storage_addr)
             && !ContactInfo::is_valid_address(&contact_info.tpu)
     }
@@ -1581,7 +1581,7 @@ impl Node {
         let pubkey = Pubkey::new_rand();
         Self::new_localhost_with_pubkey(&pubkey)
     }
-    pub fn new_localhost_replicator(pubkey: &Pubkey) -> Self {
+    pub fn new_localhost_storage_miner(pubkey: &Pubkey) -> Self {
         let gossip = UdpSocket::bind("127.0.0.1:0").unwrap();
         let tvu = UdpSocket::bind("127.0.0.1:0").unwrap();
         let storage = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -1716,7 +1716,7 @@ impl Node {
             },
         }
     }
-    pub fn new_replicator_with_external_ip(
+    pub fn new_miner_with_external_ip(
         pubkey: &Pubkey,
         gossip_addr: &SocketAddr,
         port_range: PortRange,
@@ -2102,9 +2102,9 @@ mod tests {
     }
 
     #[test]
-    fn new_replicator_external_ip_test() {
+    fn new_storage_miner_external_ip_test() {
         let ip = Ipv4Addr::from(0);
-        let node = Node::new_replicator_with_external_ip(
+        let node = Node::new_miner_with_external_ip(
             &Pubkey::new_rand(),
             &socketaddr!(ip, 0),
             FULLNODE_PORT_RANGE,

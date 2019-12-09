@@ -62,7 +62,7 @@ impl GossipService {
     }
 }
 
-/// Discover Nodes and Replicators in a cluster
+/// Discover Nodes and miners in a cluster
 pub fn discover_cluster(
     entry_point: &SocketAddr,
     num_nodes: usize,
@@ -95,7 +95,7 @@ pub fn discover(
             module_path!().to_string()
         )
     );
-    let (met_criteria, secs, tvu_peers, replicators) =
+    let (met_criteria, secs, tvu_peers, miners) =
         spy(spy_ref.clone(), num_nodes, timeout, find_node);
 
     exit.store(true, Ordering::Relaxed);
@@ -117,7 +117,7 @@ pub fn discover(
                 module_path!().to_string()
             )
         );
-        return Ok((tvu_peers, replicators));
+        return Ok((tvu_peers, miners));
     }
 
     if !tvu_peers.is_empty() {
@@ -134,7 +134,7 @@ pub fn discover(
                 module_path!().to_string()
             )
         );
-        return Ok((tvu_peers, replicators));
+        return Ok((tvu_peers, miners));
     }
 
     // info!(
@@ -261,7 +261,7 @@ fn spy(
     let now = Instant::now();
     let mut met_criteria = false;
     let mut tvu_peers: Vec<ContactInfo> = Vec::new();
-    let mut replicators: Vec<ContactInfo> = Vec::new();
+    let mut miners: Vec<ContactInfo> = Vec::new();
     let mut i = 0;
     loop {
         if let Some(secs) = timeout {
@@ -269,22 +269,22 @@ fn spy(
                 break;
             }
         }
-        // collect tvu peers but filter out replicators since their tvu is transient and we do not want
+        // collect tvu peers but filter out miners since their tvu is transient and we do not want
         // it to show up as a "node"
         tvu_peers = spy_ref
             .read()
             .unwrap()
             .tvu_peers()
             .into_iter()
-            .filter(|node| !ClusterInfo::is_replicator(&node))
+            .filter(|node| !ClusterInfo::is_storage_miner(&node))
             .collect::<Vec<_>>();
-        replicators = spy_ref.read().unwrap().storage_peers();
+        miners = spy_ref.read().unwrap().storage_peers();
         if let Some(num) = num_nodes {
-            if tvu_peers.len() + replicators.len() >= num {
+            if tvu_peers.len() + miners.len() >= num {
                 if let Some(pubkey) = find_node {
                     if tvu_peers
                         .iter()
-                        .chain(replicators.iter())
+                        .chain(miners.iter())
                         .any(|x| x.id == pubkey)
                     {
                         met_criteria = true;
@@ -300,7 +300,7 @@ fn spy(
             if num_nodes.is_none()
                 && tvu_peers
                     .iter()
-                    .chain(replicators.iter())
+                    .chain(miners.iter())
                     .any(|x| x.id == pubkey)
             {
                 met_criteria = true;
@@ -331,7 +331,7 @@ fn spy(
         met_criteria,
         now.elapsed().as_secs(),
         tvu_peers,
-        replicators,
+        miners,
     )
 }
 

@@ -204,7 +204,7 @@ fn test_listener_startup() {
     let config = ClusterConfig {
         node_stakes: vec![100; 1],
         cluster_difs: 1_000,
-        num_listeners: 3,
+        observer_amnt: 3,
         ..ClusterConfig::default()
     };
     let cluster = LocalCluster::new(&config);

@@ -553,8 +553,8 @@ mod tests {
     fn test_bank_storage() {
         let (genesis_block, mint_keypair) = create_genesis_block(1000);
         let mint_pubkey = mint_keypair.pubkey();
-        let replicator_keypair = Keypair::new();
-        let replicator_pubkey = replicator_keypair.pubkey();
+        let miner_keypair = Keypair::new();
+        let miner_pubkey = miner_keypair.pubkey();
         let validator_keypair = Keypair::new();
         let validator_pubkey = validator_keypair.pubkey();
 
@@ -572,12 +572,12 @@ mod tests {
         let storage_blockhash = hash(&[x2]);
 
         bank_client
-            .transfer(10, &mint_keypair, &replicator_pubkey)
+            .transfer(10, &mint_keypair, &miner_pubkey)
             .unwrap();
 
         let message = Message::new(storage_instruction::create_miner_storage_account(
             &mint_pubkey,
-            &replicator_pubkey,
+            &miner_pubkey,
             1,
         ));
         bank_client.send_message(&[&mint_keypair], message).unwrap();
@@ -606,7 +606,7 @@ mod tests {
         let slot = 0;
         let message = Message::new_with_payer(
             vec![storage_instruction::mining_proof(
-                &replicator_pubkey,
+                &miner_pubkey,
                 Hash::default(),
                 slot,
                 Signature::default(),
@@ -614,7 +614,7 @@ mod tests {
             Some(&mint_pubkey),
         );
         assert_matches!(
-            bank_client.send_message(&[&mint_keypair, &replicator_keypair], message),
+            bank_client.send_message(&[&mint_keypair, &miner_keypair], message),
             Ok(_)
         );
 

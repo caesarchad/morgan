@@ -1,5 +1,5 @@
 // A stage that handles generating the keys used to encrypt the ledger and sample it
-// for storage mining. Replicators submit storage proofs, validator then bundles them
+// for storage mining. miners submit storage proofs, validator then bundles them
 // to submit its proof for mining to be rewarded.
 
 // use crate::bank_forks::BankForks;
@@ -37,13 +37,13 @@ use morgan_helper::logHelper::*;
 // Vec of [ledger blocks] x [keys]
 type StorageResults = Vec<Hash>;
 type StorageKeys = Vec<u8>;
-type ReplicatorMap = Vec<HashMap<Pubkey, Vec<Proof>>>;
+type StorageMinerMap = Vec<HashMap<Pubkey, Vec<Proof>>>;
 
 #[derive(Default)]
 pub struct StorageStateInner {
     storage_results: StorageResults,
     storage_keys: StorageKeys,
-    replicator_map: ReplicatorMap,
+    storage_miner_map: StorageMinerMap,
     storage_blockhash: Hash,
     slot: u64,
 }
@@ -80,12 +80,12 @@ impl StorageState {
     pub fn new() -> Self {
         let storage_keys = vec![0u8; KEY_SIZE * NUM_IDENTITIES];
         let storage_results = vec![Hash::default(); NUM_IDENTITIES];
-        let replicator_map = vec![];
+        let storage_miner_map = vec![];
 
         let state = StorageStateInner {
             storage_keys,
             storage_results,
-            replicator_map,
+            storage_miner_map,
             slot: 0,
             storage_blockhash: Hash::default(),
         };
@@ -114,12 +114,11 @@ impl StorageState {
     }
 
     pub fn get_pubkeys_for_slot(&self, slot: u64) -> Vec<Pubkey> {
-        // TODO: keep track of age?
         const MAX_PUBKEYS_TO_RETURN: usize = 5;
         let index = get_segment_from_slot(slot) as usize;
-        let replicator_map = &self.state.read().unwrap().replicator_map;
-        if index < replicator_map.len() {
-            replicator_map[index]
+        let storage_miner_map = &self.state.read().unwrap().storage_miner_map;
+        if index < storage_miner_map.len() {
+            storage_miner_map[index]
                 .keys()
                 .cloned()
                 .take(MAX_PUBKEYS_TO_RETURN)
@@ -432,15 +431,15 @@ impl StorageStage {
 
                     let mut statew = storage_state.write().unwrap();
                     let max_segment_index = get_segment_from_slot(slot) as usize;
-                    if statew.replicator_map.len() < max_segment_index {
+                    if statew.storage_miner_map.len() < max_segment_index {
                         statew
-                            .replicator_map
+                            .storage_miner_map
                             .resize(max_segment_index, HashMap::new());
                     }
                     let proof_segment_index = get_segment_from_slot(proof_slot) as usize;
-                    if proof_segment_index < statew.replicator_map.len() {
+                    if proof_segment_index < statew.storage_miner_map.len() {
                         // Copy the submitted proof
-                        statew.replicator_map[proof_segment_index]
+                        statew.storage_miner_map[proof_segment_index]
                             .entry(storage_account_key)
                             .or_default()
                             .push(Proof {
@@ -520,11 +519,11 @@ impl StorageStage {
                             slot,
                             instruction_sender,
                         )?;
-                        // bundle up mining submissions from replicators
+                        // bundle up mining submissions from miners
                         // and submit them in a tx to the leader to get rewarded.
                         let mut w_state = storage_state.write().unwrap();
                         let instructions: Vec<_> = w_state
-                            .replicator_map
+                            .storage_miner_map
                             .iter_mut()
                             .enumerate()
                             .flat_map(|(segment, proof_map)| {
