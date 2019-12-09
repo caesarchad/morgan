@@ -868,7 +868,7 @@ impl ClusterInfo {
             // despite packet drops)
             // If we had a tick at max_tick_height, then we know it must be the last
             // Blob in the broadcast, There cannot be an entry that got sent after the
-            // last tick, guaranteed by the PohService).
+            // last tick, guaranteed by the WaterClockService).
             orders.push((
                 blobs.last().unwrap().clone(),
                 broadcast_table.iter().collect(),

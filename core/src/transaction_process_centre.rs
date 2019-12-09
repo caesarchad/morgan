@@ -7,7 +7,7 @@ use crate::propagate_stage::BroadcastStage;
 use crate::cluster_message::ClusterInfo;
 use crate::cluster_vote_message_listener::ClusterInfoVoteListener;
 use crate::fetch_stage::FetchStage;
-use crate::water_clock_recorder::{PohRecorder, WorkingBankEntries};
+use crate::water_clock_recorder::{WaterClockRecorder, WorkingBankEntries};
 use crate::service::Service;
 use crate::signature_verify_stage::SigVerifyStage;
 use morgan_interface::hash::Hash;
@@ -31,7 +31,7 @@ impl Tpu {
     pub fn new(
         id: &Pubkey,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         entry_receiver: Receiver<WorkingBankEntries>,
         transactions_sockets: Vec<UdpSocket>,
         tpu_via_blobs_sockets: Vec<UdpSocket>,
@@ -49,7 +49,7 @@ impl Tpu {
             tpu_via_blobs_sockets,
             &exit,
             &packet_sender,
-            &poh_recorder,
+            &waterclock_recorder,
         );
         let (verified_sender, verified_receiver) = channel();
 
@@ -62,12 +62,12 @@ impl Tpu {
             cluster_info.clone(),
             sigverify_disabled,
             verified_vote_sender,
-            &poh_recorder,
+            &waterclock_recorder,
         );
 
         let banking_stage = BankingStage::new(
             &cluster_info,
-            poh_recorder,
+            waterclock_recorder,
             verified_receiver,
             verified_vote_receiver,
         );

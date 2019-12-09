@@ -12,7 +12,7 @@ use morgan_client::thin_client::create_client;
 use morgan_runtime::epoch_schedule::MINIMUM_SLOT_LENGTH;
 use morgan_interface::client::SyncClient;
 use morgan_interface::hash::Hash;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::signature::{Keypair, KeypairUtil, Signature};
 use morgan_interface::system_transaction;
 use morgan_interface::timing::{
@@ -165,7 +165,7 @@ pub trait StreamMultiplexer: Debug + Send + Sync {
 
 pub fn sleep_n_epochs(
     num_epochs: f64,
-    config: &PohConfig,
+    config: &WaterClockConfig,
     ticks_per_slot: u64,
     slots_per_epoch: u64,
 ) {

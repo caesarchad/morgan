@@ -103,7 +103,7 @@ impl Transaction {
     /// * `from_keypairs` - The keys used to sign the transaction.
     /// * `keys` - The keys for the transaction.  These are the program state
     ///    instances or dif recipient keys.
-    /// * `recent_blockhash` - The PoH hash.
+    /// * `recent_blockhash` - The Water Clock hash.
     /// * `program_ids` - The keys that identify programs used in the `instruction` vector.
     /// * `instructions` - Instructions that will be executed atomically.
     pub fn new_with_compiled_instructions<T: KeypairUtil>(

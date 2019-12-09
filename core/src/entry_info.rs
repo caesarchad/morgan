@@ -3,7 +3,7 @@
 //! transactions within it. Entries cannot be reordered, and its field `num_hashes`
 //! represents an approximate amount of time since the last Entry was created.
 use crate::packet::{Blob, SharedBlob, BLOB_DATA_SIZE};
-use crate::water_clock::Poh;
+use crate::water_clock::WaterClock;
 use crate::result::Result;
 use bincode::{deserialize, serialized_size};
 use chrono::prelude::Utc;
@@ -180,12 +180,12 @@ fn next_hash(start_hash: &Hash, num_hashes: u64, transactions: &[Transaction]) -
         return *start_hash;
     }
 
-    let mut poh = Poh::new(*start_hash, None);
-    poh.hash(num_hashes.saturating_sub(1));
+    let mut waterclock = WaterClock::new(*start_hash, None);
+    waterclock.hash(num_hashes.saturating_sub(1));
     if transactions.is_empty() {
-        poh.tick().unwrap().hash
+        waterclock.tick().unwrap().hash
     } else {
-        poh.record(hash_transactions(transactions)).unwrap().hash
+        waterclock.record(hash_transactions(transactions)).unwrap().hash
     }
 }
 

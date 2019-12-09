@@ -11,7 +11,7 @@ pub mod loader_instruction;
 pub mod message;
 pub mod native_loader;
 pub mod packet;
-pub mod poh_config;
+pub mod waterclock_config;
 pub mod pubkey;
 pub mod rpc_port;
 pub mod short_vec;

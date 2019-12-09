@@ -3,13 +3,7 @@ use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct WaterClockConfig {
-    /// The target tick rate of the cluster.
     pub target_tick_duration: Duration,
-
-    /// How many hashes to roll before emitting the next tick entry.
-    /// None enables "Low power mode", which implies:
-    /// * sleep for `target_tick_duration` instead of hashing
-    /// * the number of hashes per tick will be variable
     pub hashes_per_tick: Option<u64>,
 }
 

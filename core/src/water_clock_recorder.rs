@@ -1,7 +1,7 @@
-//! The `poh_recorder` module provides an object for synchronizing with Proof of History.
-//! It synchronizes PoH, bank's register_tick and the ledger
+//! The `waterclock_recorder` module provides an object for synchronizing with Proof of History.
+//! It synchronizes Water Clock, bank's register_tick and the ledger
 //!
-//! PohRecorder will send ticks or entries to a WorkingBank, if the current range of ticks is
+//! WaterClockRecorder will send ticks or entries to a WorkingBank, if the current range of ticks is
 //! within the specified WorkingBank range.
 //!
 //! For Ticks:
@@ -14,11 +14,11 @@ use crate::block_buffer_pool::BlockBufferPool;
 use crate::entry_info::Entry;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::leader_arrange_utils;
-use crate::water_clock::Poh;
+use crate::water_clock::WaterClock;
 use crate::result::{Error, Result};
 use morgan_runtime::bank::Bank;
 use morgan_interface::hash::Hash;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::pubkey::Pubkey;
 use morgan_interface::timing;
 use morgan_interface::transaction::Transaction;
@@ -30,7 +30,7 @@ use morgan_helper::logHelper::*;
 const MAX_LAST_LEADER_GRACE_TICKS_FACTOR: u64 = 2;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum PohRecorderError {
+pub enum WaterClockRecorderErr {
     InvalidCallingObject,
     MaxHeightReached,
     MinHeightNotReached,
@@ -45,8 +45,8 @@ pub struct WorkingBank {
     pub max_tick_height: u64,
 }
 
-pub struct PohRecorder {
-    pub poh: Arc<Mutex<Poh>>,
+pub struct WaterClockRecorder {
+    pub waterclock: Arc<Mutex<WaterClock>>,
     tick_height: u64,
     clear_bank_signal: Option<SyncSender<bool>>,
     start_slot: u64,
@@ -60,11 +60,11 @@ pub struct PohRecorder {
     id: Pubkey,
     blocktree: Arc<BlockBufferPool>,
     leader_schedule_cache: Arc<LeaderScheduleCache>,
-    poh_config: Arc<PohConfig>,
+    waterclock_config: Arc<WaterClockConfig>,
     ticks_per_slot: u64,
 }
 
-impl PohRecorder {
+impl WaterClockRecorder {
     fn clear_bank(&mut self) {
         if let Some(working_bank) = self.working_bank.take() {
             let bank = working_bank.bank;
@@ -134,7 +134,7 @@ impl PohRecorder {
                     target_tick.saturating_sub(self.max_last_leader_grace_ticks);
                 // Is the current tick in the same slot as the target tick?
                 // Check if either grace period has expired,
-                // or target tick is = grace period (i.e. poh recorder was just reset)
+                // or target tick is = grace period (i.e. waterclock recorder was just reset)
                 if self.tick_height() <= self.last_leader_tick.unwrap_or(0)
                     && (self.tick_height() >= target_tick
                         || self.max_last_leader_grace_ticks
@@ -167,7 +167,7 @@ impl PohRecorder {
             .unwrap_or((None, None))
     }
 
-    // synchronize PoH with a bank
+    // synchronize Water Clock with a bank
     pub fn reset(
         &mut self,
         tick_height: u64,
@@ -179,22 +179,22 @@ impl PohRecorder {
         self.clear_bank();
         let mut cache = vec![];
         {
-            let mut poh = self.poh.lock().unwrap();
+            let mut waterclock = self.waterclock.lock().unwrap();
             // info!(
             //     "{}",
-            //     Info(format!("reset poh from: {},{} to: {},{}",
-            //     poh.hash, self.tick_height, blockhash, tick_height,).to_string())
+            //     Info(format!("reset waterclock from: {},{} to: {},{}",
+            //     waterclock.hash, self.tick_height, blockhash, tick_height,).to_string())
             // );
             let info:String = format!(
                 "reset water clock from: {},{} to: {},{}",
-                poh.hash,
+                waterclock.hash,
                 self.tick_height,
                 blockhash,
                 tick_height
             ).to_string();
             println!("{}", printLn(info, module_path!().to_string()));
 
-            poh.reset(blockhash, self.poh_config.hashes_per_tick);
+            waterclock.reset(blockhash, self.waterclock_config.hashes_per_tick);
         }
 
         std::mem::swap(&mut cache, &mut self.tick_cache);
@@ -237,15 +237,15 @@ impl PohRecorder {
         let working_bank = self
             .working_bank
             .as_ref()
-            .ok_or(Error::PohRecorderError(PohRecorderError::MaxHeightReached))?;
+            .ok_or(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached))?;
         if self.tick_height < working_bank.min_tick_height {
-            return Err(Error::PohRecorderError(
-                PohRecorderError::MinHeightNotReached,
+            return Err(Error::WaterClockRecorderErr(
+                WaterClockRecorderErr::MinHeightNotReached,
             ));
         }
         if tick && self.tick_height == working_bank.min_tick_height {
-            return Err(Error::PohRecorderError(
-                PohRecorderError::MinHeightNotReached,
+            return Err(Error::WaterClockRecorderErr(
+                WaterClockRecorderErr::MinHeightNotReached,
             ));
         }
 
@@ -274,7 +274,7 @@ impl PohRecorder {
         if self.tick_height >= working_bank.max_tick_height {
             // info!(
             //     "{}",
-            //     Info(format!("poh_record: max_tick_height reached, setting working bank {} to None",
+            //     Info(format!("waterclock_record: max_tick_height reached, setting working bank {} to None",
             //     working_bank.bank.slot()).to_string())
             // );
             let info:String = format!(
@@ -307,21 +307,21 @@ impl PohRecorder {
 
     pub fn tick(&mut self) {
         let now = Instant::now();
-        let poh_entry = self.poh.lock().unwrap().tick();
+        let waterclock_entry = self.waterclock.lock().unwrap().tick();
         inc_new_counter_warn!(
-            "poh_recorder-tick_lock_contention",
+            "waterclock_recorder-tick_lock_contention",
             timing::duration_as_ms(&now.elapsed()) as usize,
             0,
             1000
         );
         let now = Instant::now();
-        if let Some(poh_entry) = poh_entry {
+        if let Some(waterclock_entry) = waterclock_entry {
             self.tick_height += 1;
             trace!("tick {}", self.tick_height);
 
             if self.start_leader_at_tick.is_none() {
                 inc_new_counter_warn!(
-                    "poh_recorder-tick_overhead",
+                    "waterclock_recorder-tick_overhead",
                     timing::duration_as_ms(&now.elapsed()) as usize,
                     0,
                     1000
@@ -330,8 +330,8 @@ impl PohRecorder {
             }
 
             let entry = Entry {
-                num_hashes: poh_entry.num_hashes,
-                hash: poh_entry.hash,
+                num_hashes: waterclock_entry.num_hashes,
+                hash: waterclock_entry.hash,
                 transactions: vec![],
             };
 
@@ -339,7 +339,7 @@ impl PohRecorder {
             let _ = self.flush_cache(true);
         }
         inc_new_counter_warn!(
-            "poh_recorder-tick_overhead",
+            "waterclock_recorder-tick_overhead",
             timing::duration_as_ms(&now.elapsed()) as usize,
             0,
             1000
@@ -361,29 +361,29 @@ impl PohRecorder {
             let working_bank = self
                 .working_bank
                 .as_ref()
-                .ok_or(Error::PohRecorderError(PohRecorderError::MaxHeightReached))?;
+                .ok_or(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached))?;
             if bank_slot != working_bank.bank.slot() {
-                return Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached));
+                return Err(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached));
             }
 
             let now = Instant::now();
-            if let Some(poh_entry) = self.poh.lock().unwrap().record(mixin) {
+            if let Some(waterclock_entry) = self.waterclock.lock().unwrap().record(mixin) {
                 inc_new_counter_warn!(
-                    "poh_recorder-record_lock_contention",
+                    "waterclock_recorder-record_lock_contention",
                     timing::duration_as_ms(&now.elapsed()) as usize,
                     0,
                     1000
                 );
                 let entry = Entry {
-                    num_hashes: poh_entry.num_hashes,
-                    hash: poh_entry.hash,
+                    num_hashes: waterclock_entry.num_hashes,
+                    hash: waterclock_entry.hash,
                     transactions,
                 };
                 self.sender
                     .send((working_bank.bank.clone(), vec![(entry, self.tick_height)]))?;
                 return Ok(());
             }
-            // record() might fail if the next PoH hash needs to be a tick.  But that's ok, tick()
+            // record() might fail if the next Water Clock hash needs to be a tick.  But that's ok, tick()
             // and re-record()
             self.tick();
         }
@@ -400,11 +400,11 @@ impl PohRecorder {
         blocktree: &Arc<BlockBufferPool>,
         clear_bank_signal: Option<SyncSender<bool>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
-        poh_config: &Arc<PohConfig>,
+        waterclock_config: &Arc<WaterClockConfig>,
     ) -> (Self, Receiver<WorkingBankEntries>) {
-        let poh = Arc::new(Mutex::new(Poh::new(
+        let waterclock = Arc::new(Mutex::new(WaterClock::new(
             last_entry_hash,
-            poh_config.hashes_per_tick,
+            waterclock_config.hashes_per_tick,
         )));
         let (sender, receiver) = channel();
         let max_last_leader_grace_ticks = ticks_per_slot / MAX_LAST_LEADER_GRACE_TICKS_FACTOR;
@@ -415,7 +415,7 @@ impl PohRecorder {
         );
         (
             Self {
-                poh,
+                waterclock,
                 tick_height,
                 tick_cache: vec![],
                 working_bank: None,
@@ -430,13 +430,13 @@ impl PohRecorder {
                 blocktree: blocktree.clone(),
                 leader_schedule_cache: leader_schedule_cache.clone(),
                 ticks_per_slot,
-                poh_config: poh_config.clone(),
+                waterclock_config: waterclock_config.clone(),
             },
             receiver,
         )
     }
 
-    /// A recorder to synchronize PoH with the following data structures
+    /// A recorder to synchronize Water Clock with the following data structures
     /// * bank - the LastId's queue is updated on `tick` and `record` events
     /// * sender - the Entry channel that outputs to the ledger
     pub fn new(
@@ -448,7 +448,7 @@ impl PohRecorder {
         id: &Pubkey,
         blocktree: &Arc<BlockBufferPool>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
-        poh_config: &Arc<PohConfig>,
+        waterclock_config: &Arc<WaterClockConfig>,
     ) -> (Self, Receiver<WorkingBankEntries>) {
         Self::new_with_clear_signal(
             tick_height,
@@ -460,7 +460,7 @@ impl PohRecorder {
             blocktree,
             None,
             leader_schedule_cache,
-            poh_config,
+            waterclock_config,
         )
     }
 }
@@ -476,14 +476,14 @@ mod tests {
     use std::sync::mpsc::sync_channel;
 
     #[test]
-    fn test_poh_recorder_no_zero_tick() {
+    fn test_waterclock_recorder_no_zero_tick() {
         let prev_hash = Hash::default();
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -492,25 +492,25 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 1);
-            assert_eq!(poh_recorder.tick_cache[0].1, 1);
-            assert_eq!(poh_recorder.tick_height, 1);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 1);
+            assert_eq!(waterclock_recorder.tick_cache[0].1, 1);
+            assert_eq!(waterclock_recorder.tick_height, 1);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_tick_height_is_last_tick() {
+    fn test_waterclock_recorder_tick_height_is_last_tick() {
         let prev_hash = Hash::default();
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -519,24 +519,24 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 2);
-            assert_eq!(poh_recorder.tick_cache[1].1, 2);
-            assert_eq!(poh_recorder.tick_height, 2);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 2);
+            assert_eq!(waterclock_recorder.tick_cache[1].1, 2);
+            assert_eq!(waterclock_recorder.tick_height, 2);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_reset_clears_cache() {
+    fn test_waterclock_recorder_reset_clears_cache() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 Hash::default(),
                 0,
@@ -545,18 +545,18 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 1);
-            poh_recorder.reset(0, Hash::default(), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 1);
+            waterclock_recorder.reset(0, Hash::default(), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_clear() {
+    fn test_waterclock_recorder_clear() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -564,7 +564,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -573,7 +573,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -581,16 +581,16 @@ mod tests {
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            assert!(poh_recorder.working_bank.is_some());
-            poh_recorder.clear_bank();
-            assert!(poh_recorder.working_bank.is_none());
+            waterclock_recorder.set_working_bank(working_bank);
+            assert!(waterclock_recorder.working_bank.is_some());
+            waterclock_recorder.clear_bank();
+            assert!(waterclock_recorder.working_bank.is_none());
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_tick_sent_after_min() {
+    fn test_waterclock_recorder_tick_sent_after_min() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -598,7 +598,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -607,7 +607,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -615,28 +615,28 @@ mod tests {
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
-            poh_recorder.tick();
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
             //tick height equal to min_tick_height
             //no tick has been sent
-            assert_eq!(poh_recorder.tick_cache.last().unwrap().1, 2);
+            assert_eq!(waterclock_recorder.tick_cache.last().unwrap().1, 2);
             assert!(entry_receiver.try_recv().is_err());
 
             // all ticks are sent after height > min
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_height, 3);
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_height, 3);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
             let (bank_, e) = entry_receiver.recv().expect("recv 1");
             assert_eq!(e.len(), 3);
             assert_eq!(bank_.slot(), bank.slot());
-            assert!(poh_recorder.working_bank.is_none());
+            assert!(waterclock_recorder.working_bank.is_none());
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_tick_sent_upto_and_including_max() {
+    fn test_waterclock_recorder_tick_sent_upto_and_including_max() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -644,7 +644,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -653,26 +653,26 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
-            poh_recorder.tick();
-            poh_recorder.tick();
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.last().unwrap().1, 4);
-            assert_eq!(poh_recorder.tick_height, 4);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.last().unwrap().1, 4);
+            assert_eq!(waterclock_recorder.tick_height, 4);
 
             let working_bank = WorkingBank {
                 bank,
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
 
-            assert_eq!(poh_recorder.tick_height, 5);
-            assert!(poh_recorder.working_bank.is_none());
+            assert_eq!(waterclock_recorder.tick_height, 5);
+            assert!(waterclock_recorder.working_bank.is_none());
             let (_, e) = entry_receiver.recv().expect("recv 1");
             assert_eq!(e.len(), 3);
         }
@@ -680,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poh_recorder_record_to_early() {
+    fn test_waterclock_recorder_record_to_early() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -688,7 +688,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -697,7 +697,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -705,11 +705,11 @@ mod tests {
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
             let tx = test_tx();
             let h1 = hash(b"hello world!");
-            assert!(poh_recorder
+            assert!(waterclock_recorder
                 .record(bank.slot(), h1, vec![tx.clone()])
                 .is_err());
             assert!(entry_receiver.try_recv().is_err());
@@ -718,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poh_recorder_record_bad_slot() {
+    fn test_waterclock_recorder_record_bad_slot() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -726,7 +726,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -735,7 +735,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -743,22 +743,22 @@ mod tests {
                 min_tick_height: 1,
                 max_tick_height: 2,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 1);
-            assert_eq!(poh_recorder.tick_height, 1);
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 1);
+            assert_eq!(waterclock_recorder.tick_height, 1);
             let tx = test_tx();
             let h1 = hash(b"hello world!");
             assert_matches!(
-                poh_recorder.record(bank.slot() + 1, h1, vec![tx.clone()]),
-                Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached))
+                waterclock_recorder.record(bank.slot() + 1, h1, vec![tx.clone()]),
+                Err(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached))
             );
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_record_at_min_passes() {
+    fn test_waterclock_recorder_record_at_min_passes() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -766,7 +766,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -775,7 +775,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -783,16 +783,16 @@ mod tests {
                 min_tick_height: 1,
                 max_tick_height: 2,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 1);
-            assert_eq!(poh_recorder.tick_height, 1);
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 1);
+            assert_eq!(waterclock_recorder.tick_height, 1);
             let tx = test_tx();
             let h1 = hash(b"hello world!");
-            assert!(poh_recorder
+            assert!(waterclock_recorder
                 .record(bank.slot(), h1, vec![tx.clone()])
                 .is_ok());
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
 
             //tick in the cache + entry
             let (_b, e) = entry_receiver.recv().expect("recv 1");
@@ -805,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poh_recorder_record_at_max_fails() {
+    fn test_waterclock_recorder_record_at_max_fails() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -813,7 +813,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -822,7 +822,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -830,13 +830,13 @@ mod tests {
                 min_tick_height: 1,
                 max_tick_height: 2,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_height, 2);
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_height, 2);
             let tx = test_tx();
             let h1 = hash(b"hello world!");
-            assert!(poh_recorder
+            assert!(waterclock_recorder
                 .record(bank.slot(), h1, vec![tx.clone()])
                 .is_err());
 
@@ -849,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poh_cache_on_disconnect() {
+    fn test_waterclock_cache_on_disconnect() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -857,7 +857,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -866,7 +866,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let working_bank = WorkingBank {
@@ -874,14 +874,14 @@ mod tests {
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_height, 2);
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_height, 2);
             drop(entry_receiver);
-            poh_recorder.tick();
-            assert!(poh_recorder.working_bank.is_none());
-            assert_eq!(poh_recorder.tick_cache.len(), 3);
+            waterclock_recorder.tick();
+            assert!(waterclock_recorder.working_bank.is_none());
+            assert_eq!(waterclock_recorder.tick_cache.len(), 3);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -892,7 +892,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 Hash::default(),
                 0,
@@ -901,20 +901,20 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 2);
-            let hash = poh_recorder.poh.lock().unwrap().hash;
-            poh_recorder.reset(
-                poh_recorder.tick_height,
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 2);
+            let hash = waterclock_recorder.waterclock.lock().unwrap().hash;
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height,
                 hash,
                 0,
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
             );
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -925,7 +925,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 Hash::default(),
                 0,
@@ -934,19 +934,19 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 2);
-            poh_recorder.reset(
-                poh_recorder.tick_cache[0].1,
-                poh_recorder.tick_cache[0].0.hash,
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 2);
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_cache[0].1,
+                waterclock_recorder.tick_cache[0].0.hash,
                 0,
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
             );
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -957,7 +957,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 Hash::default(),
                 0,
@@ -966,17 +966,17 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.tick();
-            poh_recorder.tick();
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_cache.len(), 3);
-            assert_eq!(poh_recorder.tick_height, 3);
-            poh_recorder.reset(1, hash(b"hello"), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
-            assert_eq!(poh_recorder.tick_cache.len(), 0);
-            poh_recorder.tick();
-            assert_eq!(poh_recorder.tick_height, 2);
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_cache.len(), 3);
+            assert_eq!(waterclock_recorder.tick_height, 3);
+            waterclock_recorder.reset(1, hash(b"hello"), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
+            assert_eq!(waterclock_recorder.tick_cache.len(), 0);
+            waterclock_recorder.tick();
+            assert_eq!(waterclock_recorder.tick_height, 2);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -989,7 +989,7 @@ mod tests {
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 Hash::default(),
                 0,
@@ -998,7 +998,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
             let ticks_per_slot = bank.ticks_per_slot();
             let working_bank = WorkingBank {
@@ -1006,9 +1006,9 @@ mod tests {
                 min_tick_height: 2,
                 max_tick_height: 3,
             };
-            poh_recorder.set_working_bank(working_bank);
-            poh_recorder.reset(1, hash(b"hello"), 0, Some(4), ticks_per_slot);
-            assert!(poh_recorder.working_bank.is_none());
+            waterclock_recorder.set_working_bank(working_bank);
+            waterclock_recorder.reset(1, hash(b"hello"), 0, Some(4), ticks_per_slot);
+            assert!(waterclock_recorder.working_bank.is_none());
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -1022,7 +1022,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let (sender, receiver) = sync_channel(1);
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new_with_clear_signal(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new_with_clear_signal(
                 0,
                 Hash::default(),
                 0,
@@ -1032,17 +1032,17 @@ mod tests {
                 &Arc::new(blocktree),
                 Some(sender),
                 &Arc::new(LeaderScheduleCache::default()),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            poh_recorder.set_bank(&bank);
-            poh_recorder.clear_bank();
+            waterclock_recorder.set_bank(&bank);
+            waterclock_recorder.clear_bank();
             assert!(receiver.try_recv().is_ok());
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 
     #[test]
-    fn test_poh_recorder_reset_start_slot() {
+    fn test_waterclock_recorder_reset_start_slot() {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
@@ -1055,7 +1055,7 @@ mod tests {
             let bank = Arc::new(Bank::new(&genesis_block));
 
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -1064,7 +1064,7 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             let end_slot = 3;
@@ -1075,19 +1075,19 @@ mod tests {
                 max_tick_height,
             };
 
-            poh_recorder.set_working_bank(working_bank);
+            waterclock_recorder.set_working_bank(working_bank);
             for _ in 0..max_tick_height {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
 
             let tx = test_tx();
             let h1 = hash(b"hello world!");
-            assert!(poh_recorder
+            assert!(waterclock_recorder
                 .record(bank.slot(), h1, vec![tx.clone()])
                 .is_err());
-            assert!(poh_recorder.working_bank.is_none());
+            assert!(waterclock_recorder.working_bank.is_none());
             // Make sure the starting slot is updated
-            assert_eq!(poh_recorder.start_slot(), end_slot);
+            assert_eq!(waterclock_recorder.start_slot(), end_slot);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -1101,7 +1101,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -1110,14 +1110,14 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             // Test that with no leader slot, we don't reach the leader tick
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
 
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 0,
                 None,
@@ -1125,10 +1125,10 @@ mod tests {
             );
 
             // Test that with no leader slot in reset(), we don't reach the leader tick
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
 
             // Provide a leader slot 1 slot down
-            poh_recorder.reset(
+            waterclock_recorder.reset(
                 bank.ticks_per_slot(),
                 bank.last_blockhash(),
                 0,
@@ -1136,38 +1136,38 @@ mod tests {
                 bank.ticks_per_slot(),
             );
 
-            let init_ticks = poh_recorder.tick_height();
+            let init_ticks = waterclock_recorder.tick_height();
 
             // Send one slot worth of ticks
             for _ in 0..bank.ticks_per_slot() {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
 
             // Tick should be recorded
             assert_eq!(
-                poh_recorder.tick_height(),
+                waterclock_recorder.tick_height(),
                 init_ticks + bank.ticks_per_slot()
             );
 
             // Test that we don't reach the leader tick because of grace ticks
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
 
-            // reset poh now. it should discard the grace ticks wait
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            // reset waterclock now. it should discard the grace ticks wait
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 1,
                 Some(2),
                 bank.ticks_per_slot(),
             );
             // without sending more ticks, we should be leader now
-            assert_eq!(poh_recorder.reached_leader_tick().0, true);
-            assert_eq!(poh_recorder.reached_leader_tick().1, 0);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, true);
+            assert_eq!(waterclock_recorder.reached_leader_tick().1, 0);
 
             // Now test that with grace ticks we can reach leader ticks
             // Set the leader slot 1 slot down
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 2,
                 Some(3),
@@ -1176,33 +1176,33 @@ mod tests {
 
             // Send one slot worth of ticks
             for _ in 0..bank.ticks_per_slot() {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
 
             // We are not the leader yet, as expected
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
 
             // Send 1 less tick than the grace ticks
             for _ in 0..bank.ticks_per_slot() / MAX_LAST_LEADER_GRACE_TICKS_FACTOR - 1 {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
             // We are still not the leader
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
 
             // Send one more tick
-            poh_recorder.tick();
+            waterclock_recorder.tick();
 
             // We should be the leader now
-            assert_eq!(poh_recorder.reached_leader_tick().0, true);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, true);
             assert_eq!(
-                poh_recorder.reached_leader_tick().1,
+                waterclock_recorder.reached_leader_tick().1,
                 bank.ticks_per_slot() / MAX_LAST_LEADER_GRACE_TICKS_FACTOR
             );
 
             // Let's test that correct grace ticks are reported
             // Set the leader slot 1 slot down
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 3,
                 Some(4),
@@ -1213,30 +1213,30 @@ mod tests {
             for _ in
                 bank.ticks_per_slot() / MAX_LAST_LEADER_GRACE_TICKS_FACTOR..bank.ticks_per_slot()
             {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
 
             // Send one extra tick before resetting (so that there's one grace tick)
-            poh_recorder.tick();
+            waterclock_recorder.tick();
 
             // We are not the leader yet, as expected
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 3,
                 Some(4),
                 bank.ticks_per_slot(),
             );
             // without sending more ticks, we should be leader now
-            assert_eq!(poh_recorder.reached_leader_tick().0, true);
-            assert_eq!(poh_recorder.reached_leader_tick().1, 1);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, true);
+            assert_eq!(waterclock_recorder.reached_leader_tick().1, 1);
 
             // Let's test that if a node overshoots the ticks for its target
             // leader slot, reached_leader_tick() will return false
             // Set the leader slot 1 slot down
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 4,
                 Some(5),
@@ -1245,11 +1245,11 @@ mod tests {
 
             // Send remaining ticks for the slot (remember we sent extra ticks in the previous part of the test)
             for _ in 0..4 * bank.ticks_per_slot() {
-                poh_recorder.tick();
+                waterclock_recorder.tick();
             }
 
             // We are not the leader, as expected
-            assert_eq!(poh_recorder.reached_leader_tick().0, false);
+            assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -1263,7 +1263,7 @@ mod tests {
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
-            let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
                 prev_hash,
                 0,
@@ -1272,17 +1272,17 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
 
             // Test that with no leader slot, we don't reach the leader tick
             assert_eq!(
-                poh_recorder.would_be_leader(2 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(2 * bank.ticks_per_slot()),
                 false
             );
 
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 0,
                 None,
@@ -1290,13 +1290,13 @@ mod tests {
             );
 
             assert_eq!(
-                poh_recorder.would_be_leader(2 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(2 * bank.ticks_per_slot()),
                 false
             );
 
             // We reset with leader slot after 3 slots
-            poh_recorder.reset(
-                poh_recorder.tick_height(),
+            waterclock_recorder.reset(
+                waterclock_recorder.tick_height(),
                 bank.last_blockhash(),
                 0,
                 Some(bank.slot() + 3),
@@ -1305,25 +1305,25 @@ mod tests {
 
             // Test that the node won't be leader in next 2 slots
             assert_eq!(
-                poh_recorder.would_be_leader(2 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(2 * bank.ticks_per_slot()),
                 false
             );
 
             // Test that the node will be leader in next 3 slots
             assert_eq!(
-                poh_recorder.would_be_leader(3 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(3 * bank.ticks_per_slot()),
                 true
             );
 
             assert_eq!(
-                poh_recorder.would_be_leader(2 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(2 * bank.ticks_per_slot()),
                 false
             );
 
             // If we set the working bank, the node should be leader within next 2 slots
-            poh_recorder.set_bank(&bank);
+            waterclock_recorder.set_bank(&bank);
             assert_eq!(
-                poh_recorder.would_be_leader(2 * bank.ticks_per_slot()),
+                waterclock_recorder.would_be_leader(2 * bank.ticks_per_slot()),
                 true
             );
         }

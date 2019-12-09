@@ -10,7 +10,7 @@ use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::leader_arrange_utils;
 use crate::fork_selection::{Locktower, StakeLockout};
 use crate::packet::BlobError;
-use crate::water_clock_recorder::PohRecorder;
+use crate::water_clock_recorder::WaterClockRecorder;
 use crate::result::{Error, Result};
 use crate::rpc_subscriptions::RpcSubscriptions;
 use crate::service::Service;
@@ -84,7 +84,7 @@ impl ReplayStage {
         exit: &Arc<AtomicBool>,
         ledger_signal_receiver: Receiver<bool>,
         subscriptions: &Arc<RpcSubscriptions>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) -> (Self, Receiver<(u64, Pubkey)>, Receiver<Vec<u64>>)
     where
@@ -96,7 +96,7 @@ impl ReplayStage {
         let exit_ = exit.clone();
         let subscriptions = subscriptions.clone();
         let bank_forks = bank_forks.clone();
-        let poh_recorder = poh_recorder.clone();
+        let waterclock_recorder = waterclock_recorder.clone();
         let my_pubkey = *my_pubkey;
         let mut ticks_per_slot = 0;
         let mut locktower = Locktower::new_from_forks(&bank_forks.read().unwrap(), &my_pubkey);
@@ -122,7 +122,7 @@ impl ReplayStage {
                         &leader_schedule_cache,
                     );
 
-                    let mut is_tpu_bank_active = poh_recorder.lock().unwrap().bank().is_some();
+                    let mut is_tpu_bank_active = waterclock_recorder.lock().unwrap().bank().is_some();
 
                     Self::replay_active_banks(
                         &blocktree,
@@ -158,11 +158,11 @@ impl ReplayStage {
                             &root_slot_sender,
                         )?;
 
-                        Self::reset_poh_recorder(
+                        Self::reset_waterclock_recorder(
                             &my_pubkey,
                             &blocktree,
                             &bank,
-                            &poh_recorder,
+                            &waterclock_recorder,
                             ticks_per_slot,
                             &leader_schedule_cache,
                         );
@@ -171,25 +171,25 @@ impl ReplayStage {
                     }
 
                     let (reached_leader_tick, grace_ticks) = if !is_tpu_bank_active {
-                        let poh = poh_recorder.lock().unwrap();
-                        poh.reached_leader_tick()
+                        let waterclock = waterclock_recorder.lock().unwrap();
+                        waterclock.reached_leader_tick()
                     } else {
                         (false, 0)
                     };
 
                     if !is_tpu_bank_active {
                         assert!(ticks_per_slot > 0);
-                        let poh_tick_height = poh_recorder.lock().unwrap().tick_height();
-                        let poh_slot = leader_arrange_utils::tick_height_to_slot(
+                        let waterclock_tick_height = waterclock_recorder.lock().unwrap().tick_height();
+                        let waterclock_slot = leader_arrange_utils::tick_height_to_slot(
                             ticks_per_slot,
-                            poh_tick_height + 1,
+                            waterclock_tick_height + 1,
                         );
                         Self::start_leader(
                             &my_pubkey,
                             &bank_forks,
-                            &poh_recorder,
+                            &waterclock_recorder,
                             &cluster_info,
-                            poh_slot,
+                            waterclock_slot,
                             reached_leader_tick,
                             grace_ticks,
                             &leader_schedule_cache,
@@ -216,16 +216,16 @@ impl ReplayStage {
     pub fn start_leader(
         my_pubkey: &Pubkey,
         bank_forks: &Arc<RwLock<BankForks>>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        poh_slot: u64,
+        waterclock_slot: u64,
         reached_leader_tick: bool,
         grace_ticks: u64,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) {
-        trace!("{} checking poh slot {}", my_pubkey, poh_slot);
-        if bank_forks.read().unwrap().get(poh_slot).is_none() {
-            let parent_slot = poh_recorder.lock().unwrap().start_slot();
+        trace!("{} checking waterclock slot {}", my_pubkey, waterclock_slot);
+        if bank_forks.read().unwrap().get(waterclock_slot).is_none() {
+            let parent_slot = waterclock_recorder.lock().unwrap().start_slot();
             let parent = {
                 let r_bf = bank_forks.read().unwrap();
                 r_bf.get(parent_slot)
@@ -234,33 +234,33 @@ impl ReplayStage {
             };
             assert!(parent.is_frozen());
 
-            leader_schedule_cache.slot_leader_at(poh_slot, Some(&parent))
+            leader_schedule_cache.slot_leader_at(waterclock_slot, Some(&parent))
                 .map(|next_leader| {
                     debug!(
-                        "me: {} leader {} at poh slot {}",
-                        my_pubkey, next_leader, poh_slot
+                        "me: {} leader {} at waterclock slot {}",
+                        my_pubkey, next_leader, waterclock_slot
                     );
                     cluster_info.write().unwrap().set_leader(&next_leader);
                     if next_leader == *my_pubkey && reached_leader_tick {
-                        debug!("{} starting tpu for slot {}", my_pubkey, poh_slot);
+                        debug!("{} starting tpu for slot {}", my_pubkey, waterclock_slot);
                         datapoint_warn!(
                             "replay_stage-new_leader",
-                            ("count", poh_slot, i64),
+                            ("count", waterclock_slot, i64),
                             ("grace", grace_ticks, i64));
-                        let tpu_bank = Bank::new_from_parent(&parent, my_pubkey, poh_slot);
+                        let tpu_bank = Bank::new_from_parent(&parent, my_pubkey, waterclock_slot);
                         bank_forks.write().unwrap().insert(tpu_bank);
-                        if let Some(tpu_bank) = bank_forks.read().unwrap().get(poh_slot).cloned() {
+                        if let Some(tpu_bank) = bank_forks.read().unwrap().get(waterclock_slot).cloned() {
                             assert_eq!(
                                 bank_forks.read().unwrap().working_bank().slot(),
                                 tpu_bank.slot()
                             );
                             debug!(
-                                "poh_recorder new working bank: me: {} next_slot: {} next_leader: {}",
+                                "waterclock_recorder new working bank: me: {} next_slot: {} next_leader: {}",
                                 my_pubkey,
                                 tpu_bank.slot(),
                                 next_leader
                             );
-                            poh_recorder.lock().unwrap().set_bank(&tpu_bank);
+                            waterclock_recorder.lock().unwrap().set_bank(&tpu_bank);
                         }
                     }
                 })
@@ -365,17 +365,17 @@ impl ReplayStage {
         Ok(())
     }
 
-    fn reset_poh_recorder(
+    fn reset_waterclock_recorder(
         my_pubkey: &Pubkey,
         blocktree: &BlockBufferPool,
         bank: &Arc<Bank>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         ticks_per_slot: u64,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) {
         let next_leader_slot =
             leader_schedule_cache.next_leader_slot(&my_pubkey, bank.slot(), &bank, Some(blocktree));
-        poh_recorder.lock().unwrap().reset(
+        waterclock_recorder.lock().unwrap().reset(
             bank.tick_height(),
             bank.last_blockhash(),
             bank.slot(),
@@ -383,7 +383,7 @@ impl ReplayStage {
             ticks_per_slot,
         );
         debug!(
-            "{:?} voted and reset poh at {}. next leader slot {:?}",
+            "{:?} voted and reset waterclock at {}. next leader slot {:?}",
             my_pubkey,
             bank.tick_height(),
             next_leader_slot

@@ -59,7 +59,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
         let blocktree = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
-        let (exit, poh_recorder, poh_service, _signal_receiver) =
+        let (exit, waterclock_recorder, waterclock_service, _signal_receiver) =
             create_test_recorder(&bank, &blocktree);
 
         let tx = test_tx();
@@ -75,11 +75,11 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
         // If the packet buffers are copied, performance will be poor.
         bencher.iter(move || {
             let _ignored =
-                BankingStage::consume_buffered_packets(&my_pubkey, &poh_recorder, &mut packets);
+                BankingStage::consume_buffered_packets(&my_pubkey, &waterclock_recorder, &mut packets);
         });
 
         exit.store(true, Ordering::Relaxed);
-        poh_service.join().unwrap();
+        waterclock_service.join().unwrap();
     }
     let _unused = BlockBufferPool::destruct(&ledger_path);
 }
@@ -155,23 +155,23 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         let blocktree = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
-        let (exit, poh_recorder, poh_service, signal_receiver) =
+        let (exit, waterclock_recorder, waterclock_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);
         let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
         let cluster_info = Arc::new(RwLock::new(cluster_info));
         let _banking_stage = BankingStage::new(
             &cluster_info,
-            &poh_recorder,
+            &waterclock_recorder,
             verified_receiver,
             vote_receiver,
         );
-        poh_recorder.lock().unwrap().set_bank(&bank);
+        waterclock_recorder.lock().unwrap().set_bank(&bank);
 
         let half_len = verified.len() / 2;
         let mut start = 0;
 
         // This is so that the signal_receiver does not go out of scope after the closure.
-        // If it is dropped before poh_service, then poh_service will error when
+        // If it is dropped before waterclock_service, then waterclock_service will error when
         // calling send() on the channel.
         let signal_receiver = Arc::new(signal_receiver);
         let signal_receiver2 = signal_receiver.clone();
@@ -193,7 +193,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         });
         drop(vote_sender);
         exit.store(true, Ordering::Relaxed);
-        poh_service.join().unwrap();
+        waterclock_service.join().unwrap();
     }
     let _unused = BlockBufferPool::destruct(&ledger_path);
 }
@@ -281,17 +281,17 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
         let blocktree = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
-        let (exit, poh_recorder, poh_service, signal_receiver) =
+        let (exit, waterclock_recorder, waterclock_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);
         let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
         let cluster_info = Arc::new(RwLock::new(cluster_info));
         let _banking_stage = BankingStage::new(
             &cluster_info,
-            &poh_recorder,
+            &waterclock_recorder,
             verified_receiver,
             vote_receiver,
         );
-        poh_recorder.lock().unwrap().set_bank(&bank);
+        waterclock_recorder.lock().unwrap().set_bank(&bank);
 
         let mut id = genesis_block.hash();
         for _ in 0..(MAX_RECENT_BLOCKHASHES * DEFAULT_TICKS_PER_SLOT as usize) {
@@ -316,7 +316,7 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
         });
         drop(vote_sender);
         exit.store(true, Ordering::Relaxed);
-        poh_service.join().unwrap();
+        waterclock_service.join().unwrap();
     }
     BlockBufferPool::destruct(&ledger_path).unwrap();
 }

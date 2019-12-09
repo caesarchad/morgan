@@ -32,7 +32,7 @@ pub enum Error {
     BlobError(packet::BlobError),
     ErasureError(reed_solomon_erasure::Error),
     SendError,
-    PohRecorderError(water_clock_recorder::PohRecorderError),
+    WaterClockRecorderErr(water_clock_recorder::WaterClockRecorderErr),
     BlockBufferPoolError(block_buffer_pool::BlockBufferPoolError),
 }
 
@@ -204,9 +204,9 @@ impl std::convert::From<std::boxed::Box<bincode::ErrorKind>> for Error {
         Error::Serialize(e)
     }
 }
-impl std::convert::From<water_clock_recorder::PohRecorderError> for Error {
-    fn from(e: water_clock_recorder::PohRecorderError) -> Error {
-        Error::PohRecorderError(e)
+impl std::convert::From<water_clock_recorder::WaterClockRecorderErr> for Error {
+    fn from(e: water_clock_recorder::WaterClockRecorderErr) -> Error {
+        Error::WaterClockRecorderErr(e)
     }
 }
 impl std::convert::From<block_buffer_pool::BlockBufferPoolError> for Error {

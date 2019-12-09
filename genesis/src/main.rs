@@ -18,7 +18,7 @@ use morgan_interface::account::Account;
 use morgan_interface::fee_calculator::FeeCalculator;
 use morgan_interface::genesis_block::GenesisBlock;
 use morgan_interface::hash::{hash, Hash};
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::signature::{read_keypair, KeypairUtil};
 use morgan_interface::system_program;
 use morgan_interface::timing;
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let default_difs_per_signature =
         &FeeCalculator::default().difs_per_signature.to_string();
     let default_target_tick_duration =
-        &timing::duration_as_ms(&PohConfig::default().target_tick_duration).to_string();
+        &timing::duration_as_ms(&WaterClockConfig::default().target_tick_duration).to_string();
     let default_ticks_per_slot = &timing::DEFAULT_TICKS_PER_SLOT.to_string();
     let default_slots_per_epoch = &timing::DEFAULT_SLOTS_PER_EPOCH.to_string();
 
@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 .takes_value(true)
                 .default_value("auto")
                 .help(
-                    "How many PoH hashes to roll before emitting the next tick. \
+                    "How many Water Clock hashes to roll before emitting the next tick. \
                      If \"auto\", determine based on --target-tick-duration \
                      and the hash rate of this computer. If \"sleep\", for development \
                      sleep for --target-tick-duration instead of hashing",
@@ -227,7 +227,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         value_t_or_exit!(matches, "difs_per_signature", u64);
     genesis_block.ticks_per_slot = value_t_or_exit!(matches, "ticks_per_slot", u64);
     genesis_block.slots_per_epoch = value_t_or_exit!(matches, "slots_per_epoch", u64);
-    genesis_block.poh_config.target_tick_duration =
+    genesis_block.waterclock_config.target_tick_duration =
         Duration::from_millis(value_t_or_exit!(matches, "target_tick_duration", u64));
 
     match matches.value_of("hashes_per_tick").unwrap() {
@@ -241,17 +241,17 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             let end = Instant::now();
             let elapsed = end.duration_since(start).as_millis();
 
-            let hashes_per_tick = (genesis_block.poh_config.target_tick_duration.as_millis()
+            let hashes_per_tick = (genesis_block.waterclock_config.target_tick_duration.as_millis()
                 * 1_000_000
                 / elapsed) as u64;
             println!("Hashes per tick: {}", hashes_per_tick);
-            genesis_block.poh_config.hashes_per_tick = Some(hashes_per_tick);
+            genesis_block.waterclock_config.hashes_per_tick = Some(hashes_per_tick);
         }
         "sleep" => {
-            genesis_block.poh_config.hashes_per_tick = None;
+            genesis_block.waterclock_config.hashes_per_tick = None;
         }
         _ => {
-            genesis_block.poh_config.hashes_per_tick =
+            genesis_block.waterclock_config.hashes_per_tick =
                 Some(value_t_or_exit!(matches, "hashes_per_tick", u64));
         }
     }

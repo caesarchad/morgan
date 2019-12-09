@@ -8,8 +8,8 @@ use crate::entry_info::{hash_transactions, Entry};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::packet;
 use crate::packet::{Packet, Packets};
-use crate::water_clock_recorder::{PohRecorder, PohRecorderError, WorkingBankEntries};
-use crate::water_clock_service::PohService;
+use crate::water_clock_recorder::{WaterClockRecorder, WaterClockRecorderErr, WorkingBankEntries};
+use crate::water_clock_service::WaterClockService;
 use crate::result::{Error, Result};
 use crate::service::Service;
 use crate::signature_verify_stage::VerifiedPackets;
@@ -19,7 +19,7 @@ use morgan_metricbot::{inc_new_counter_debug, inc_new_counter_info, inc_new_coun
 use morgan_runtime::accounts_db::ErrorCounters;
 use morgan_runtime::bank::Bank;
 use morgan_runtime::locked_accounts_results::LockedAccountsResults;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::pubkey::Pubkey;
 use morgan_interface::timing::{
     self, duration_as_us, DEFAULT_TICKS_PER_SLOT, MAX_RECENT_BLOCKHASHES,
@@ -59,13 +59,13 @@ impl BankingStage {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         verified_receiver: Receiver<VerifiedPackets>,
         verified_vote_receiver: Receiver<VerifiedPackets>,
     ) -> Self {
         Self::new_num_threads(
             cluster_info,
-            poh_recorder,
+            waterclock_recorder,
             verified_receiver,
             verified_vote_receiver,
             2, // 1 for voting, 1 for banking.
@@ -75,7 +75,7 @@ impl BankingStage {
 
     fn new_num_threads(
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         verified_receiver: Receiver<VerifiedPackets>,
         verified_vote_receiver: Receiver<VerifiedPackets>,
         num_threads: u32,
@@ -84,7 +84,7 @@ impl BankingStage {
         let verified_vote_receiver = Arc::new(Mutex::new(verified_vote_receiver));
 
         // Single thread to generate entries from many banks.
-        // This thread talks to poh_service and broadcasts the entries once they have been recorded.
+        // This thread talks to waterclock_service and broadcasts the entries once they have been recorded.
         // Once an entry has been recorded, its blockhash is registered with the bank.
         let exit = Arc::new(AtomicBool::new(false));
 
@@ -98,7 +98,7 @@ impl BankingStage {
                     (verified_vote_receiver.clone(), false)
                 };
 
-                let poh_recorder = poh_recorder.clone();
+                let waterclock_recorder = waterclock_recorder.clone();
                 let cluster_info = cluster_info.clone();
                 let exit = exit.clone();
                 let mut recv_start = Instant::now();
@@ -107,7 +107,7 @@ impl BankingStage {
                     .spawn(move || {
                         Self::process_loop(
                             &verified_receiver,
-                            &poh_recorder,
+                            &waterclock_recorder,
                             &cluster_info,
                             &mut recv_start,
                             enable_forwarding,
@@ -146,7 +146,7 @@ impl BankingStage {
 
     pub fn consume_buffered_packets(
         my_pubkey: &Pubkey,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         buffered_packets: &mut Vec<PacketsAndOffsets>,
     ) -> Result<UnprocessedPackets> {
         let mut unprocessed_packets = vec![];
@@ -157,7 +157,7 @@ impl BankingStage {
 
         let proc_start = Instant::now();
         while let Some((msgs, unprocessed_indexes)) = buffered_packets_iter.next() {
-            let bank = poh_recorder.lock().unwrap().bank();
+            let bank = waterclock_recorder.lock().unwrap().bank();
             if bank.is_none() {
                 rebuffered_packets += unprocessed_indexes.len();
                 Self::push_unprocessed(&mut unprocessed_packets, msgs, unprocessed_indexes);
@@ -168,7 +168,7 @@ impl BankingStage {
             let (processed, verified_txs_len, new_unprocessed_indexes) =
                 Self::process_received_packets(
                     &bank,
-                    &poh_recorder,
+                    &waterclock_recorder,
                     &msgs,
                     unprocessed_indexes.to_owned(),
                 )?;
@@ -180,7 +180,7 @@ impl BankingStage {
             Self::push_unprocessed(&mut unprocessed_packets, msgs, new_unprocessed_indexes);
 
             if processed < verified_txs_len {
-                let next_leader = poh_recorder.lock().unwrap().next_slot_leader();
+                let next_leader = waterclock_recorder.lock().unwrap().next_slot_leader();
                 // Walk thru rest of the transactions and filter out the invalid (e.g. too old) ones
                 while let Some((msgs, unprocessed_indexes)) = buffered_packets_iter.next() {
                     let unprocessed_indexes = Self::filter_unprocessed_packets(
@@ -244,7 +244,7 @@ impl BankingStage {
 
     fn process_buffered_packets(
         socket: &std::net::UdpSocket,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         buffered_packets: &mut Vec<PacketsAndOffsets>,
         enable_forwarding: bool,
@@ -252,13 +252,13 @@ impl BankingStage {
         let rcluster_info = cluster_info.read().unwrap();
 
         let (decision, next_leader) = {
-            let poh = poh_recorder.lock().unwrap();
-            let next_leader = poh.next_slot_leader();
+            let waterclock = waterclock_recorder.lock().unwrap();
+            let next_leader = waterclock.next_slot_leader();
             (
                 Self::consume_or_forward_packets(
                     next_leader,
-                    poh.bank().is_some(),
-                    poh.would_be_leader(DEFAULT_TICKS_PER_SLOT * 2),
+                    waterclock.bank().is_some(),
+                    waterclock.would_be_leader(DEFAULT_TICKS_PER_SLOT * 2),
                     &rcluster_info.id(),
                 ),
                 next_leader,
@@ -269,7 +269,7 @@ impl BankingStage {
             BufferedPacketsDecision::Consume => {
                 let mut unprocessed = Self::consume_buffered_packets(
                     &rcluster_info.id(),
-                    poh_recorder,
+                    waterclock_recorder,
                     buffered_packets,
                 )?;
                 buffered_packets.append(&mut unprocessed);
@@ -301,7 +301,7 @@ impl BankingStage {
 
     pub fn process_loop(
         verified_receiver: &Arc<Mutex<Receiver<VerifiedPackets>>>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         recv_start: &mut Instant,
         enable_forwarding: bool,
@@ -313,7 +313,7 @@ impl BankingStage {
             if !buffered_packets.is_empty() {
                 Self::process_buffered_packets(
                     &socket,
-                    poh_recorder,
+                    waterclock_recorder,
                     cluster_info,
                     &mut buffered_packets,
                     enable_forwarding,
@@ -333,7 +333,7 @@ impl BankingStage {
 
             match Self::process_packets(
                 &verified_receiver,
-                &poh_recorder,
+                &waterclock_recorder,
                 recv_start,
                 recv_timeout,
                 cluster_info,
@@ -375,7 +375,7 @@ impl BankingStage {
         bank: &'a Bank,
         txs: &'b [Transaction],
         results: &[transaction::Result<()>],
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
         recordable_txs: &'b mut Vec<&'b Transaction>,
     ) -> Result<LockedAccountsResults<'a, 'b, &'b Transaction>> {
         let processed_transactions: Vec<_> = results
@@ -400,7 +400,7 @@ impl BankingStage {
             );
             let hash = hash_transactions(&processed_transactions);
             // record and unlock will unlock all the successful transactions
-            poh.lock()
+            waterclock.lock()
                 .unwrap()
                 .record(bank.slot(), hash, processed_transactions)?;
         }
@@ -410,7 +410,7 @@ impl BankingStage {
     fn process_and_record_transactions_locked(
         bank: &Bank,
         txs: &[Transaction],
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
         lock_results: &LockedAccountsResults<Transaction>,
     ) -> Result<()> {
         let now = Instant::now();
@@ -428,7 +428,7 @@ impl BankingStage {
         let (record_time, record_locks) = {
             let now = Instant::now();
             let record_locks =
-                Self::record_transactions(bank, txs, &results, poh, &mut recordable_txs)?;
+                Self::record_transactions(bank, txs, &results, waterclock, &mut recordable_txs)?;
             (now.elapsed(), record_locks)
         };
 
@@ -456,7 +456,7 @@ impl BankingStage {
     pub fn process_and_record_transactions(
         bank: &Bank,
         txs: &[Transaction],
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
         chunk_offset: usize,
     ) -> (Result<()>, Vec<usize>) {
         let now = Instant::now();
@@ -476,7 +476,7 @@ impl BankingStage {
             })
             .collect();
 
-        let results = Self::process_and_record_transactions_locked(bank, txs, poh, &lock_results);
+        let results = Self::process_and_record_transactions_locked(bank, txs, waterclock, &lock_results);
 
         let now = Instant::now();
         // Once the accounts are new transactions can enter the pipeline to process them
@@ -497,11 +497,11 @@ impl BankingStage {
     /// Sends transactions to the bank.
     ///
     /// Returns the number of transactions successfully processed by the bank, which may be less
-    /// than the total number if max PoH height was reached and the bank halted
+    /// than the total number if max Water Clock height was reached and the bank halted
     fn process_transactions(
         bank: &Bank,
         transactions: &[Transaction],
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
     ) -> Result<(usize, Vec<usize>)> {
         let mut chunk_start = 0;
         let mut unprocessed_txs = vec![];
@@ -516,12 +516,12 @@ impl BankingStage {
             let (result, unprocessed_txs_in_chunk) = Self::process_and_record_transactions(
                 bank,
                 &transactions[chunk_start..chunk_end],
-                poh,
+                waterclock,
                 chunk_start,
             );
             trace!("process_transactions: {:?}", result);
             unprocessed_txs.extend_from_slice(&unprocessed_txs_in_chunk);
-            if let Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached)) = result {
+            if let Err(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached)) = result {
                 // info!(
                 //     "{}",
                 //     Info(format!("process transactions: max height reached slot: {} height: {}",
@@ -633,7 +633,7 @@ impl BankingStage {
 
     fn process_received_packets(
         bank: &Arc<Bank>,
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
         msgs: &Packets,
         transaction_indexes: Vec<usize>,
     ) -> Result<(usize, usize, Vec<usize>)> {
@@ -648,7 +648,7 @@ impl BankingStage {
         let tx_len = transactions.len();
 
         let (processed, unprocessed_tx_indexes) =
-            Self::process_transactions(bank, &transactions, poh)?;
+            Self::process_transactions(bank, &transactions, waterclock)?;
 
         let unprocessed_tx_count = unprocessed_tx_indexes.len();
 
@@ -713,7 +713,7 @@ impl BankingStage {
     /// Process the incoming packets
     pub fn process_packets(
         verified_receiver: &Arc<Mutex<Receiver<VerifiedPackets>>>,
-        poh: &Arc<Mutex<PohRecorder>>,
+        waterclock: &Arc<Mutex<WaterClockRecorder>>,
         recv_start: &mut Instant,
         recv_timeout: Duration,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
@@ -741,7 +741,7 @@ impl BankingStage {
         let mut unprocessed_packets = vec![];
         while let Some((msgs, vers)) = mms_iter.next() {
             let packet_indexes = Self::generate_packet_indexes(vers);
-            let bank = poh.lock().unwrap().bank();
+            let bank = waterclock.lock().unwrap().bank();
             if bank.is_none() {
                 Self::push_unprocessed(&mut unprocessed_packets, msgs, packet_indexes);
                 continue;
@@ -749,7 +749,7 @@ impl BankingStage {
             let bank = bank.unwrap();
 
             let (processed, verified_txs_len, unprocessed_indexes) =
-                Self::process_received_packets(&bank, &poh, &msgs, packet_indexes)?;
+                Self::process_received_packets(&bank, &waterclock, &msgs, packet_indexes)?;
 
             new_tx_count += processed;
 
@@ -757,7 +757,7 @@ impl BankingStage {
             Self::push_unprocessed(&mut unprocessed_packets, msgs, unprocessed_indexes);
 
             if processed < verified_txs_len {
-                let next_leader = poh.lock().unwrap().next_slot_leader();
+                let next_leader = waterclock.lock().unwrap().next_slot_leader();
                 let my_pubkey = cluster_info.read().unwrap().id();
                 // Walk thru rest of the transactions and filter out the invalid (e.g. too old) ones
                 while let Some((msgs, vers)) = mms_iter.next() {
@@ -825,13 +825,13 @@ pub fn create_test_recorder(
     blocktree: &Arc<BlockBufferPool>,
 ) -> (
     Arc<AtomicBool>,
-    Arc<Mutex<PohRecorder>>,
-    PohService,
+    Arc<Mutex<WaterClockRecorder>>,
+    WaterClockService,
     Receiver<WorkingBankEntries>,
 ) {
     let exit = Arc::new(AtomicBool::new(false));
-    let poh_config = Arc::new(PohConfig::default());
-    let (mut poh_recorder, entry_receiver) = PohRecorder::new(
+    let waterclock_config = Arc::new(WaterClockConfig::default());
+    let (mut waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
         bank.tick_height(),
         bank.last_blockhash(),
         bank.slot(),
@@ -840,14 +840,14 @@ pub fn create_test_recorder(
         &Pubkey::default(),
         blocktree,
         &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-        &poh_config,
+        &waterclock_config,
     );
-    poh_recorder.set_bank(&bank);
+    waterclock_recorder.set_bank(&bank);
 
-    let poh_recorder = Arc::new(Mutex::new(poh_recorder));
-    let poh_service = PohService::new(poh_recorder.clone(), &poh_config, &exit);
+    let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
+    let waterclock_service = WaterClockService::new(waterclock_recorder.clone(), &waterclock_config, &exit);
 
-    (exit, poh_recorder, poh_service, entry_receiver)
+    (exit, waterclock_recorder, waterclock_service, entry_receiver)
 }
 
 #[cfg(test)]
@@ -879,13 +879,13 @@ mod tests {
             let blocktree = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
-            let (exit, poh_recorder, poh_service, _entry_receiever) =
+            let (exit, waterclock_recorder, waterclock_service, _entry_receiever) =
                 create_test_recorder(&bank, &blocktree);
             let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
             let cluster_info = Arc::new(RwLock::new(cluster_info));
             let banking_stage = BankingStage::new(
                 &cluster_info,
-                &poh_recorder,
+                &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
             );
@@ -893,7 +893,7 @@ mod tests {
             drop(vote_sender);
             exit.store(true, Ordering::Relaxed);
             banking_stage.join().unwrap();
-            poh_service.join().unwrap();
+            waterclock_service.join().unwrap();
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();
     }
@@ -914,13 +914,13 @@ mod tests {
             let blocktree = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
-            let (exit, poh_recorder, poh_service, entry_receiver) =
+            let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
             let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
             let cluster_info = Arc::new(RwLock::new(cluster_info));
             let banking_stage = BankingStage::new(
                 &cluster_info,
-                &poh_recorder,
+                &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
             );
@@ -929,8 +929,8 @@ mod tests {
             drop(verified_sender);
             drop(vote_sender);
             exit.store(true, Ordering::Relaxed);
-            poh_service.join().unwrap();
-            drop(poh_recorder);
+            waterclock_service.join().unwrap();
+            drop(waterclock_recorder);
 
             trace!("getting entries");
             let entries: Vec<_> = entry_receiver
@@ -963,13 +963,13 @@ mod tests {
             let blocktree = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
-            let (exit, poh_recorder, poh_service, entry_receiver) =
+            let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
             let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
             let cluster_info = Arc::new(RwLock::new(cluster_info));
             let banking_stage = BankingStage::new(
                 &cluster_info,
-                &poh_recorder,
+                &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
             );
@@ -1015,8 +1015,8 @@ mod tests {
             drop(verified_sender);
             drop(vote_sender);
             exit.store(true, Ordering::Relaxed);
-            poh_service.join().unwrap();
-            drop(poh_recorder);
+            waterclock_service.join().unwrap();
+            drop(waterclock_recorder);
 
             let mut blockhash = start_hash;
             let bank = Bank::new(&genesis_block);
@@ -1107,14 +1107,14 @@ mod tests {
                     BlockBufferPool::open_ledger_file(&ledger_path)
                         .expect("Expected to be able to open database ledger"),
                 );
-                let (exit, poh_recorder, poh_service, entry_receiver) =
+                let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
                     create_test_recorder(&bank, &blocktree);
                 let cluster_info =
                     ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
                 let cluster_info = Arc::new(RwLock::new(cluster_info));
                 let _banking_stage = BankingStage::new_num_threads(
                     &cluster_info,
-                    &poh_recorder,
+                    &waterclock_recorder,
                     verified_receiver,
                     vote_receiver,
                     2,
@@ -1125,7 +1125,7 @@ mod tests {
                     sleep(Duration::from_millis(100));
                 }
                 exit.store(true, Ordering::Relaxed);
-                poh_service.join().unwrap();
+                waterclock_service.join().unwrap();
                 entry_receiver
             };
             drop(verified_sender);
@@ -1170,7 +1170,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (poh_recorder, entry_receiver) = PohRecorder::new(
+            let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
                 bank.slot(),
@@ -1179,11 +1179,11 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            let poh_recorder = Arc::new(Mutex::new(poh_recorder));
+            let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
 
-            poh_recorder.lock().unwrap().set_working_bank(working_bank);
+            waterclock_recorder.lock().unwrap().set_working_bank(working_bank);
             let pubkey = Pubkey::new_rand();
             let keypair2 = Keypair::new();
             let pubkey2 = Pubkey::new_rand();
@@ -1198,7 +1198,7 @@ mod tests {
                 &bank,
                 &transactions,
                 &results,
-                &poh_recorder,
+                &waterclock_recorder,
                 &mut vec![],
             )
             .unwrap();
@@ -1214,7 +1214,7 @@ mod tests {
                 &bank,
                 &transactions,
                 &results,
-                &poh_recorder,
+                &waterclock_recorder,
                 &mut vec![],
             )
             .unwrap();
@@ -1227,7 +1227,7 @@ mod tests {
                 &bank,
                 &transactions,
                 &results,
-                &poh_recorder,
+                &waterclock_recorder,
                 &mut vec![],
             )
             .unwrap();
@@ -1486,7 +1486,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (poh_recorder, entry_receiver) = PohRecorder::new(
+            let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
                 bank.slot(),
@@ -1495,16 +1495,16 @@ mod tests {
                 &pubkey,
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            let poh_recorder = Arc::new(Mutex::new(poh_recorder));
+            let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
 
-            poh_recorder.lock().unwrap().set_working_bank(working_bank);
+            waterclock_recorder.lock().unwrap().set_working_bank(working_bank);
 
-            BankingStage::process_and_record_transactions(&bank, &transactions, &poh_recorder, 0)
+            BankingStage::process_and_record_transactions(&bank, &transactions, &waterclock_recorder, 0)
                 .0
                 .unwrap();
-            poh_recorder.lock().unwrap().tick();
+            waterclock_recorder.lock().unwrap().tick();
 
             let mut done = false;
             // read entries until I find mine, might be ticks...
@@ -1536,11 +1536,11 @@ mod tests {
                 BankingStage::process_and_record_transactions(
                     &bank,
                     &transactions,
-                    &poh_recorder,
+                    &waterclock_recorder,
                     0
                 )
                 .0,
-                Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached))
+                Err(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached))
             );
 
             assert_eq!(bank.get_balance(&pubkey), 1);
@@ -1574,7 +1574,7 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let (poh_recorder, _entry_receiver) = PohRecorder::new(
+            let (waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
                 bank.slot(),
@@ -1583,16 +1583,16 @@ mod tests {
                 &pubkey,
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &Arc::new(PohConfig::default()),
+                &Arc::new(WaterClockConfig::default()),
             );
-            let poh_recorder = Arc::new(Mutex::new(poh_recorder));
+            let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
 
-            poh_recorder.lock().unwrap().set_working_bank(working_bank);
+            waterclock_recorder.lock().unwrap().set_working_bank(working_bank);
 
             let (result, unprocessed) = BankingStage::process_and_record_transactions(
                 &bank,
                 &transactions,
-                &poh_recorder,
+                &waterclock_recorder,
                 0,
             );
 

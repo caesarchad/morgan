@@ -3,7 +3,7 @@
 use crate::account::Account;
 use crate::fee_calculator::FeeCalculator;
 use crate::hash::{hash, Hash};
-use crate::poh_config::PohConfig;
+use crate::waterclock_config::WaterClockConfig;
 use crate::pubkey::Pubkey;
 use crate::signature::{Keypair, KeypairUtil};
 use crate::system_program;
@@ -22,7 +22,7 @@ pub struct GenesisBlock {
     pub slots_per_epoch: u64,
     pub stakers_slot_offset: u64,
     pub ticks_per_slot: u64,
-    pub poh_config: PohConfig,
+    pub waterclock_config: WaterClockConfig,
 }
 
 // useful for basic tests
@@ -56,7 +56,7 @@ impl GenesisBlock {
             slots_per_epoch: DEFAULT_SLOTS_PER_EPOCH,
             stakers_slot_offset: DEFAULT_SLOTS_PER_EPOCH,
             ticks_per_slot: DEFAULT_TICKS_PER_SLOT,
-            poh_config: PohConfig::default(),
+            waterclock_config: WaterClockConfig::default(),
         }
     }
 

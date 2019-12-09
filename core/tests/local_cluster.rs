@@ -9,7 +9,7 @@ use morgan::gossip_service::discover_cluster;
 use morgan::local_cluster::{ClusterConfig, LocalCluster};
 use morgan::verifier::ValidatorConfig;
 use morgan_runtime::epoch_schedule::{EpochSchedule, MINIMUM_SLOT_LENGTH};
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::timing;
 use std::time::Duration;
 use morgan_helper::logHelper::*;
@@ -109,7 +109,7 @@ fn test_leader_failure_4() {
         &local.entry_point_info,
         &local.funding_keypair,
         num_nodes,
-        config.ticks_per_slot * config.poh_config.target_tick_duration.as_millis() as u64,
+        config.ticks_per_slot * config.waterclock_config.target_tick_duration.as_millis() as u64,
     );
 }
 #[test]
@@ -127,13 +127,13 @@ fn test_two_unbalanced_stakes() {
         validator_config: validator_config.clone(),
         ticks_per_slot: num_ticks_per_slot,
         slots_per_epoch: num_slots_per_epoch,
-        poh_config: PohConfig::new_sleep(Duration::from_millis(1000 / num_ticks_per_second)),
+        waterclock_config: WaterClockConfig::new_sleep(Duration::from_millis(1000 / num_ticks_per_second)),
         ..ClusterConfig::default()
     });
 
     cluster_tests::sleep_n_epochs(
         10.0,
-        &cluster.genesis_block.poh_config,
+        &cluster.genesis_block.waterclock_config,
         num_ticks_per_slot,
         num_slots_per_epoch,
     );
@@ -185,14 +185,14 @@ fn test_restart_node() {
     let nodes = cluster.get_node_pubkeys();
     cluster_tests::sleep_n_epochs(
         1.0,
-        &cluster.genesis_block.poh_config,
+        &cluster.genesis_block.waterclock_config,
         timing::DEFAULT_TICKS_PER_SLOT,
         slots_per_epoch,
     );
     cluster.restart_node(nodes[0]);
     cluster_tests::sleep_n_epochs(
         0.5,
-        &cluster.genesis_block.poh_config,
+        &cluster.genesis_block.waterclock_config,
         timing::DEFAULT_TICKS_PER_SLOT,
         slots_per_epoch,
     );
@@ -261,7 +261,7 @@ fn run_repairman_catchup(num_repairmen: u64) {
         ticks_per_slot: num_ticks_per_slot,
         slots_per_epoch: num_slots_per_epoch,
         stakers_slot_offset,
-        poh_config: PohConfig::new_sleep(Duration::from_millis(1000 / num_ticks_per_second)),
+        waterclock_config: WaterClockConfig::new_sleep(Duration::from_millis(1000 / num_ticks_per_second)),
         ..ClusterConfig::default()
     });
 
@@ -272,7 +272,7 @@ fn run_repairman_catchup(num_repairmen: u64) {
     // Sleep for longer than the first N warmup epochs, with a one epoch buffer for timing issues
     cluster_tests::sleep_n_epochs(
         num_warmup_epochs + 1.0,
-        &cluster.genesis_block.poh_config,
+        &cluster.genesis_block.waterclock_config,
         num_ticks_per_slot,
         num_slots_per_epoch,
     );
@@ -292,7 +292,7 @@ fn run_repairman_catchup(num_repairmen: u64) {
     // Wait for repairman protocol to catch this validator up
     cluster_tests::sleep_n_epochs(
         num_warmup_epochs + 1.0,
-        &cluster.genesis_block.poh_config,
+        &cluster.genesis_block.waterclock_config,
         num_ticks_per_slot,
         num_slots_per_epoch,
     );

@@ -1,5 +1,5 @@
 use crate::cluster_message::{ClusterInfo, GOSSIP_SLEEP_MILLIS};
-use crate::water_clock_recorder::PohRecorder;
+use crate::water_clock_recorder::WaterClockRecorder;
 use crate::result::Result;
 use crate::service::Service;
 use crate::signature_verify_stage::VerifiedPackets;
@@ -24,10 +24,10 @@ impl ClusterInfoVoteListener {
         cluster_info: Arc<RwLock<ClusterInfo>>,
         sigverify_disabled: bool,
         sender: Sender<VerifiedPackets>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
     ) -> Self {
         let exit = exit.clone();
-        let poh_recorder = poh_recorder.clone();
+        let waterclock_recorder = waterclock_recorder.clone();
         let thread = Builder::new()
             .name("morgan-cluster_info_vote_listener".to_string())
             .spawn(move || {
@@ -36,7 +36,7 @@ impl ClusterInfoVoteListener {
                     &cluster_info,
                     sigverify_disabled,
                     &sender,
-                    poh_recorder,
+                    waterclock_recorder,
                 );
             })
             .unwrap();
@@ -49,7 +49,7 @@ impl ClusterInfoVoteListener {
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         sigverify_disabled: bool,
         sender: &Sender<VerifiedPackets>,
-        poh_recorder: Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: Arc<Mutex<WaterClockRecorder>>,
     ) -> Result<()> {
         let mut last_ts = 0;
         loop {
@@ -57,7 +57,7 @@ impl ClusterInfoVoteListener {
                 return Ok(());
             }
             let (votes, new_ts) = cluster_info.read().unwrap().get_votes(last_ts);
-            if poh_recorder.lock().unwrap().bank().is_some() {
+            if waterclock_recorder.lock().unwrap().bank().is_some() {
                 last_ts = new_ts;
                 inc_new_counter_debug!("cluster_info_vote_listener-recv_count", votes.len());
                 let msgs = packet::to_packets(&votes);

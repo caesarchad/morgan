@@ -42,7 +42,7 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("print").about("Print the ledger"))
         .subcommand(SubCommand::with_name("json").about("Print the ledger in JSON format"))
-        .subcommand(SubCommand::with_name("verify").about("Verify the ledger's PoH"))
+        .subcommand(SubCommand::with_name("verify").about("Verify the ledger's Water Clock"))
         .get_matches();
 
     let ledger_path = matches.value_of("ledger").unwrap();

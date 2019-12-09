@@ -114,7 +114,7 @@ fn test_replay() {
     let storage_keypair = Arc::new(Keypair::new());
     let blocktree = Arc::new(blocktree);
     {
-        let (poh_service_exit, poh_recorder, poh_service, _entry_receiver) =
+        let (waterclock_service_exit, waterclock_recorder, waterclock_service, _entry_receiver) =
             create_test_recorder(&working_bank, &blocktree);
         let tvu = Tvu::new(
             &voting_keypair.pubkey(),
@@ -135,7 +135,7 @@ fn test_replay() {
             None,
             ledger_signal_receiver,
             &Arc::new(RpcSubscriptions::default()),
-            &poh_recorder,
+            &waterclock_recorder,
             &leader_schedule_cache,
             &exit,
             &morgan_interface::hash::Hash::default(),
@@ -200,8 +200,8 @@ fn test_replay() {
         assert_eq!(bob_balance, mint_balance - mint_ref_balance);
 
         exit.store(true, Ordering::Relaxed);
-        poh_service_exit.store(true, Ordering::Relaxed);
-        poh_service.join().unwrap();
+        waterclock_service_exit.store(true, Ordering::Relaxed);
+        waterclock_service.join().unwrap();
         tvu.join().unwrap();
         dr_l.join().unwrap();
         dr_2.join().unwrap();

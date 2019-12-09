@@ -8,8 +8,8 @@ use crate::cluster_message::{ClusterInfo, Node};
 use crate::connection_info::ContactInfo;
 use crate::gossip_service::{discover_cluster, GossipService};
 use crate::leader_arrange_cache::LeaderScheduleCache;
-use crate::water_clock_recorder::PohRecorder;
-use crate::water_clock_service::PohService;
+use crate::water_clock_recorder::WaterClockRecorder;
+use crate::water_clock_service::WaterClockService;
 use crate::rpc::JsonRpcConfig;
 use crate::rpc_pub_subervice::PubSubService;
 use crate::rpc_service::JsonRpcService;
@@ -21,7 +21,7 @@ use crate::transaction_verify_centre::{Sockets, Tvu};
 use morgan_metricbot::inc_new_counter_info;
 use morgan_runtime::bank::Bank;
 use morgan_interface::genesis_block::GenesisBlock;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::pubkey::Pubkey;
 use morgan_interface::signature::{Keypair, KeypairUtil};
 use morgan_interface::timing::timestamp;
@@ -65,8 +65,8 @@ pub struct Validator {
     rpc_service: Option<JsonRpcService>,
     rpc_pubsub_service: Option<PubSubService>,
     gossip_service: GossipService,
-    poh_recorder: Arc<Mutex<PohRecorder>>,
-    poh_service: PohService,
+    waterclock_recorder: Arc<Mutex<WaterClockRecorder>>,
+    waterclock_service: WaterClockService,
     tpu: Tpu,
     tvu: Tvu,
     ip_echo_server: morgan_netutil::IpEchoServer,
@@ -104,7 +104,7 @@ impl Validator {
             ledger_signal_receiver,
             completed_slots_receiver,
             leader_schedule_cache,
-            poh_config,
+            waterclock_config,
         ) = new_banks_from_blocktree(ledger_path, config.account_paths.clone());
 
         let leader_schedule_cache = Arc::new(leader_schedule_cache);
@@ -114,7 +114,7 @@ impl Validator {
 
         // info!(
         //     "{}",
-        //     Info(format!("starting PoH... {} {}",
+        //     Info(format!("starting Water Clock... {} {}",
         //     bank.tick_height(),
         //     bank.last_blockhash()).to_string())
         // );
@@ -128,8 +128,8 @@ impl Validator {
         );
         let blocktree = Arc::new(blocktree);
 
-        let poh_config = Arc::new(poh_config);
-        let (poh_recorder, entry_receiver) = PohRecorder::new_with_clear_signal(
+        let waterclock_config = Arc::new(waterclock_config);
+        let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new_with_clear_signal(
             bank.tick_height(),
             bank.last_blockhash(),
             bank.slot(),
@@ -139,10 +139,10 @@ impl Validator {
             &blocktree,
             blocktree.new_blobs_signals.first().cloned(),
             &leader_schedule_cache,
-            &poh_config,
+            &waterclock_config,
         );
-        let poh_recorder = Arc::new(Mutex::new(poh_recorder));
-        let poh_service = PohService::new(poh_recorder.clone(), &poh_config, &exit);
+        let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
+        let waterclock_service = WaterClockService::new(waterclock_recorder.clone(), &waterclock_config, &exit);
         assert_eq!(
             blocktree.new_blobs_signals.len(),
             1,
@@ -271,7 +271,7 @@ impl Validator {
             config.blockstream.as_ref(),
             ledger_signal_receiver,
             &subscriptions,
-            &poh_recorder,
+            &waterclock_recorder,
             &leader_schedule_cache,
             &exit,
             &genesis_blockhash,
@@ -292,7 +292,7 @@ impl Validator {
         let tpu = Tpu::new(
             &id,
             &cluster_info,
-            &poh_recorder,
+            &waterclock_recorder,
             entry_receiver,
             node.sockets.tpu,
             node.sockets.tpu_via_blobs,
@@ -312,8 +312,8 @@ impl Validator {
             tpu,
             tvu,
             exit,
-            poh_service,
-            poh_recorder,
+            waterclock_service,
+            waterclock_recorder,
             ip_echo_server,
         }
     }
@@ -339,7 +339,7 @@ pub fn new_banks_from_blocktree(
     Receiver<bool>,
     CompletedSlotsReceiver,
     LeaderScheduleCache,
-    PohConfig,
+    WaterClockConfig,
 ) {
     let genesis_block =
         GenesisBlock::load(blocktree_path).expect("Expected to successfully open genesis block");
@@ -359,7 +359,7 @@ pub fn new_banks_from_blocktree(
         ledger_signal_receiver,
         completed_slots_receiver,
         leader_schedule_cache,
-        genesis_block.poh_config,
+        genesis_block.waterclock_config,
     )
 }
 
@@ -367,8 +367,8 @@ impl Service for Validator {
     type JoinReturnType = ();
 
     fn join(self) -> Result<()> {
-        self.poh_service.join()?;
-        drop(self.poh_recorder);
+        self.waterclock_service.join()?;
+        drop(self.waterclock_recorder);
         if let Some(rpc_service) = self.rpc_service {
             rpc_service.join()?;
         }

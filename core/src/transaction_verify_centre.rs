@@ -19,7 +19,7 @@ use crate::block_stream_service::BlockstreamService;
 use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
 use crate::cluster_message::ClusterInfo;
 use crate::leader_arrange_cache::LeaderScheduleCache;
-use crate::water_clock_recorder::PohRecorder;
+use crate::water_clock_recorder::WaterClockRecorder;
 use crate::repeat_stage::ReplayStage;
 use crate::retransmit_stage::RetransmitStage;
 use crate::rpc_subscriptions::RpcSubscriptions;
@@ -69,7 +69,7 @@ impl Tvu {
         blockstream: Option<&String>,
         ledger_signal_receiver: Receiver<bool>,
         subscriptions: &Arc<RpcSubscriptions>,
-        poh_recorder: &Arc<Mutex<PohRecorder>>,
+        waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         exit: &Arc<AtomicBool>,
         genesis_blockhash: &Hash,
@@ -125,7 +125,7 @@ impl Tvu {
             &exit,
             ledger_signal_receiver,
             subscriptions,
-            poh_recorder,
+            waterclock_recorder,
             leader_schedule_cache,
         );
 
@@ -264,7 +264,7 @@ pub mod tests {
                 .expect("Expected to successfully open ledger");
         let blocktree = Arc::new(blocktree);
         let bank = bank_forks.working_bank();
-        let (exit, poh_recorder, poh_service, _entry_receiver) =
+        let (exit, waterclock_recorder, waterclock_service, _entry_receiver) =
             create_test_recorder(&bank, &blocktree);
         let voting_keypair = Keypair::new();
         let storage_keypair = Arc::new(Keypair::new());
@@ -288,7 +288,7 @@ pub mod tests {
             None,
             l_receiver,
             &Arc::new(RpcSubscriptions::default()),
-            &poh_recorder,
+            &waterclock_recorder,
             &leader_schedule_cache,
             &exit,
             &Hash::default(),
@@ -296,6 +296,6 @@ pub mod tests {
         );
         exit.store(true, Ordering::Relaxed);
         tvu.join().unwrap();
-        poh_service.join().unwrap();
+        waterclock_service.join().unwrap();
     }
 }

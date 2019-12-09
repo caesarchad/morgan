@@ -1,41 +1,41 @@
 //! The water_clock_service implements a system-wide clock to measure the passage of time
-use crate::water_clock_recorder::PohRecorder;
+use crate::water_clock_recorder::WaterClockRecorder;
 use crate::service::Service;
 use core_affinity;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep, Builder, JoinHandle};
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::io::Result;
 
-pub struct PohService {
+pub struct WaterClockService {
     tick_producer: JoinHandle<()>,
 }
 
 
 pub const NUM_HASHES_PER_BATCH: u64 = 1;
 
-impl PohService {
+impl WaterClockService {
     pub fn new(
-        poh_recorder: Arc<Mutex<PohRecorder>>,
-        poh_config: &Arc<PohConfig>,
-        poh_exit: &Arc<AtomicBool>,
+        waterclock_recorder: Arc<Mutex<WaterClockRecorder>>,
+        waterclock_config: &Arc<WaterClockConfig>,
+        waterclock_exit: &Arc<AtomicBool>,
     ) -> Self {
-        let poh_exit_ = poh_exit.clone();
-        let poh_config = poh_config.clone();
+        let waterclock_exit_ = waterclock_exit.clone();
+        let waterclock_config = waterclock_config.clone();
         let tick_producer = Builder::new()
-            .name("morgan-poh-service-tick_producer".to_string())
+            .name("morgan-waterclock-service-tick_producer".to_string())
             .spawn(move || {
-                if poh_config.hashes_per_tick.is_none() {
-                    Self::sleepy_tick_producer(poh_recorder, &poh_config, &poh_exit_);
+                if waterclock_config.hashes_per_tick.is_none() {
+                    Self::sleepy_tick_producer(waterclock_recorder, &waterclock_config, &waterclock_exit_);
                 } else {
                     if let Some(cores) = core_affinity::get_core_ids() {
                         core_affinity::set_for_current(cores[0]);
                     }
-                    Self::tick_producer(poh_recorder, &poh_exit_);
+                    Self::tick_producer(waterclock_recorder, &waterclock_exit_);
                 }
-                poh_exit_.store(true, Ordering::Relaxed);
+                waterclock_exit_.store(true, Ordering::Relaxed);
             })
             .unwrap();
 
@@ -43,22 +43,22 @@ impl PohService {
     }
 
     fn sleepy_tick_producer(
-        poh_recorder: Arc<Mutex<PohRecorder>>,
-        poh_config: &PohConfig,
-        poh_exit: &AtomicBool,
+        waterclock_recorder: Arc<Mutex<WaterClockRecorder>>,
+        waterclock_config: &WaterClockConfig,
+        waterclock_exit: &AtomicBool,
     ) {
-        while !poh_exit.load(Ordering::Relaxed) {
-            sleep(poh_config.target_tick_duration);
-            poh_recorder.lock().unwrap().tick();
+        while !waterclock_exit.load(Ordering::Relaxed) {
+            sleep(waterclock_config.target_tick_duration);
+            waterclock_recorder.lock().unwrap().tick();
         }
     }
 
-    fn tick_producer(poh_recorder: Arc<Mutex<PohRecorder>>, poh_exit: &AtomicBool) {
-        let poh = poh_recorder.lock().unwrap().poh.clone();
+    fn tick_producer(waterclock_recorder: Arc<Mutex<WaterClockRecorder>>, waterclock_exit: &AtomicBool) {
+        let waterclock = waterclock_recorder.lock().unwrap().waterclock.clone();
         loop {
-            if poh.lock().unwrap().hash(NUM_HASHES_PER_BATCH) {
-                poh_recorder.lock().unwrap().tick();
-                if poh_exit.load(Ordering::Relaxed) {
+            if waterclock.lock().unwrap().hash(NUM_HASHES_PER_BATCH) {
+                waterclock_recorder.lock().unwrap().tick();
+                if waterclock_exit.load(Ordering::Relaxed) {
                     break;
                 }
             }
@@ -67,7 +67,7 @@ impl PohService {
 
 }
 
-impl Service for PohService {
+impl Service for WaterClockService {
     type JoinReturnType = ();
 
     fn join(self) -> thread::Result<()> {
@@ -113,7 +113,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn test_poh_service() {
+    fn test_waterclock_service() {
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
         let bank = Arc::new(Bank::new(&genesis_block));
         let prev_hash = bank.last_blockhash();
@@ -121,11 +121,11 @@ mod tests {
         {
             let blocktree =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
-            let poh_config = Arc::new(PohConfig {
+            let waterclock_config = Arc::new(WaterClockConfig {
                 hashes_per_tick: Some(2),
                 target_tick_duration: Duration::from_millis(42),
             });
-            let (poh_recorder, entry_receiver) = PohRecorder::new(
+            let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
                 prev_hash,
                 bank.slot(),
@@ -134,9 +134,9 @@ mod tests {
                 &Pubkey::default(),
                 &Arc::new(blocktree),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
-                &poh_config,
+                &waterclock_config,
             );
-            let poh_recorder = Arc::new(Mutex::new(poh_recorder));
+            let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
             let exit = Arc::new(AtomicBool::new(false));
             let working_bank = WorkingBank {
                 bank: bank.clone(),
@@ -145,17 +145,17 @@ mod tests {
             };
 
             let entry_producer: JoinHandle<Result<()>> = {
-                let poh_recorder = poh_recorder.clone();
+                let waterclock_recorder = waterclock_recorder.clone();
                 let exit = exit.clone();
 
                 Builder::new()
-                    .name("morgan-poh-service-entry_producer".to_string())
+                    .name("morgan-waterclock-service-entry_producer".to_string())
                     .spawn(move || {
                         loop {
                             // send some data
                             let h1 = hash(b"hello world!");
                             let tx = test_tx();
-                            let _ = poh_recorder
+                            let _ = waterclock_recorder
                                 .lock()
                                 .unwrap()
                                 .record(bank.slot(), h1, vec![tx]);
@@ -168,8 +168,8 @@ mod tests {
                     .unwrap()
             };
 
-            let poh_service = PohService::new(poh_recorder.clone(), &poh_config, &exit);
-            poh_recorder.lock().unwrap().set_working_bank(working_bank);
+            let waterclock_service = WaterClockService::new(waterclock_recorder.clone(), &waterclock_config, &exit);
+            waterclock_recorder.lock().unwrap().set_working_bank(working_bank);
 
             // get some events
             let mut hashes = 0;
@@ -182,15 +182,15 @@ mod tests {
                     let entry = &entry.0;
                     if entry.is_tick() {
                         assert!(
-                            entry.num_hashes <= poh_config.hashes_per_tick.unwrap(),
+                            entry.num_hashes <= waterclock_config.hashes_per_tick.unwrap(),
                             format!(
                                 "{} <= {}",
                                 entry.num_hashes,
-                                poh_config.hashes_per_tick.unwrap()
+                                waterclock_config.hashes_per_tick.unwrap()
                             )
                         );
 
-                        if entry.num_hashes == poh_config.hashes_per_tick.unwrap() {
+                        if entry.num_hashes == waterclock_config.hashes_per_tick.unwrap() {
                             need_tick = false;
                         } else {
                             need_partial = false;
@@ -198,7 +198,7 @@ mod tests {
 
                         hashes += entry.num_hashes;
 
-                        assert_eq!(hashes, poh_config.hashes_per_tick.unwrap());
+                        assert_eq!(hashes, waterclock_config.hashes_per_tick.unwrap());
 
                         hashes = 0;
                     } else {
@@ -209,7 +209,7 @@ mod tests {
                 }
             }
             exit.store(true, Ordering::Relaxed);
-            let _ = poh_service.join().unwrap();
+            let _ = waterclock_service.join().unwrap();
             let _ = entry_producer.join().unwrap();
         }
         BlockBufferPool::destruct(&ledger_path).unwrap();

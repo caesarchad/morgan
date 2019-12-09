@@ -95,7 +95,7 @@ pub struct Bank {
     ///   a leader schedule calculation boundary
     epoch_stakes: HashMap<u64, Stakes>,
 
-    /// A boolean reflecting whether any entries were recorded into the PoH
+    /// A boolean reflecting whether any entries were recorded into the Water Clock
     /// stream for the slot == self.slot
     is_delta: AtomicBool,
 

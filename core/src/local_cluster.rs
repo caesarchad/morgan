@@ -12,7 +12,7 @@ use morgan_client::thin_client::ThinClient;
 use morgan_interface::client::SyncClient;
 use morgan_interface::genesis_block::GenesisBlock;
 use morgan_interface::message::Message;
-use morgan_interface::poh_config::PohConfig;
+use morgan_interface::waterclock_config::WaterClockConfig;
 use morgan_interface::pubkey::Pubkey;
 use morgan_interface::signature::{Keypair, KeypairUtil};
 use morgan_interface::system_transaction;
@@ -68,7 +68,7 @@ pub struct ClusterConfig {
     pub slots_per_epoch: u64,
     pub stakers_slot_offset: u64,
     pub native_instruction_processors: Vec<(String, Pubkey)>,
-    pub poh_config: PohConfig,
+    pub waterclock_config: WaterClockConfig,
 }
 
 impl Default for ClusterConfig {
@@ -83,7 +83,7 @@ impl Default for ClusterConfig {
             slots_per_epoch: DEFAULT_SLOTS_PER_EPOCH,
             stakers_slot_offset: DEFAULT_SLOTS_PER_EPOCH,
             native_instruction_processors: vec![],
-            poh_config: PohConfig::default(),
+            waterclock_config: WaterClockConfig::default(),
         }
     }
 }
@@ -136,7 +136,7 @@ impl LocalCluster {
         genesis_block.ticks_per_slot = config.ticks_per_slot;
         genesis_block.slots_per_epoch = config.slots_per_epoch;
         genesis_block.stakers_slot_offset = config.stakers_slot_offset;
-        genesis_block.poh_config = config.poh_config.clone();
+        genesis_block.waterclock_config = config.waterclock_config.clone();
         genesis_block
             .native_instruction_processors
             .extend_from_slice(&config.native_instruction_processors);

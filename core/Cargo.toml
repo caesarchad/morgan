@@ -112,7 +112,7 @@ name = "sigverify"
 name = "sigverify_stage"
 
 [[bench]]
-name = "poh"
+name = "water_clock"
 
 [[bench]]
 required-features = ["chacha"]
