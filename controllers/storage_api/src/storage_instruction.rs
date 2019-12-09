@@ -16,7 +16,7 @@ pub enum StorageInstruction {
     ///    0 - Account to be initialized
     InitializeMiningPool,
     InitializeValidatorStorage,
-    InitializeReplicatorStorage,
+    InitializeMinerStorage,
 
     SubmitMiningProof {
         sha_state: Hash,
@@ -62,7 +62,7 @@ pub fn create_validator_storage_account(
     ]
 }
 
-pub fn create_replicator_storage_account(
+pub fn create_miner_storage_account(
     from_pubkey: &Pubkey,
     storage_pubkey: &Pubkey,
     difs: u64,
@@ -77,7 +77,7 @@ pub fn create_replicator_storage_account(
         ),
         Instruction::new(
             id(),
-            &StorageInstruction::InitializeReplicatorStorage,
+            &StorageInstruction::InitializeMinerStorage,
             vec![AccountMeta::new(*storage_pubkey, false)],
         ),
     ]

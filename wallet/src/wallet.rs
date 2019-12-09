@@ -56,7 +56,7 @@ pub enum WalletCommand {
     RedeemVoteCredits(Pubkey, Pubkey, Pubkey),
     ShowStakeAccount(Pubkey),
     CreateStorageMiningPoolAccount(Pubkey, u64),
-    CreateReplicatorStorageAccount(Pubkey),
+    CreateMinerStorageAccount(Pubkey),
     CreateValidatorStorageAccount(Pubkey),
     ClaimStorageReward(Pubkey, Pubkey, u64),
     ShowStorageAccount(Pubkey),
@@ -271,7 +271,7 @@ pub fn parse_command(
         }
         ("create-storage-miner-storage-account", Some(matches)) => {
             let storage_account_pubkey = pubkey_of(matches, "storage_account_pubkey").unwrap();
-            Ok(WalletCommand::CreateReplicatorStorageAccount(
+            Ok(WalletCommand::CreateMinerStorageAccount(
                 storage_account_pubkey,
             ))
         }
@@ -657,7 +657,7 @@ fn process_create_replicator_storage_account(
     storage_account_pubkey: &Pubkey,
 ) -> ProcessResult {
     let (recent_blockhash, _fee_calculator) = rpc_client.get_recent_blockhash()?;
-    let ixs = storage_instruction::create_replicator_storage_account(
+    let ixs = storage_instruction::create_miner_storage_account(
         &config.keypair.pubkey(),
         storage_account_pubkey,
         1,
@@ -1057,7 +1057,7 @@ pub fn process_command(config: &WalletConfig) -> ProcessResult {
             )
         }
 
-        WalletCommand::CreateReplicatorStorageAccount(storage_account_pubkey) => {
+        WalletCommand::CreateMinerStorageAccount(storage_account_pubkey) => {
             process_create_replicator_storage_account(&rpc_client, config, &storage_account_pubkey)
         }
 

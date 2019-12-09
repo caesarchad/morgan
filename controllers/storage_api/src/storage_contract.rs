@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use morgan_helper::logHelper::*;
 
 pub const TOTAL_VALIDATOR_REWARDS: u64 = 1;
-pub const TOTAL_REPLICATOR_REWARDS: u64 = 1;
-// Todo Tune this for actual use cases when replicators are feature complete
+pub const TOTAL_STORAGE_MINER_REWARDS: u64 = 1;
+// Todo Tune this for actual use cases when storage miners are feature complete
 pub const STORAGE_ACCOUNT_SPACE: u64 = 1024 * 8;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -53,7 +53,7 @@ pub enum StorageContract {
         lockout_validations: HashMap<usize, HashMap<Hash, ProofStatus>>,
         reward_validations: HashMap<usize, HashMap<Hash, ProofStatus>>,
     },
-    ReplicatorStorage {
+    MinerStorage {
         /// Map of Proofs per segment, in a HashMap based on the sha_state
         proofs: HashMap<usize, HashMap<Hash, Proof>>,
         /// Map of Rewards per segment, in a HashMap based on the sha_state
@@ -99,10 +99,10 @@ impl<'a> StorageAccount<'a> {
         }
     }
 
-    pub fn initialize_replicator_storage(&mut self) -> Result<(), InstructionError> {
+    pub fn initialize_storage_miner_storage(&mut self) -> Result<(), InstructionError> {
         let storage_contract = &mut self.account.state()?;
         if let StorageContract::Uninitialized = storage_contract {
-            *storage_contract = StorageContract::ReplicatorStorage {
+            *storage_contract = StorageContract::MinerStorage {
                 proofs: HashMap::new(),
                 reward_validations: HashMap::new(),
             };
@@ -135,7 +135,7 @@ impl<'a> StorageAccount<'a> {
         current_slot: u64,
     ) -> Result<(), InstructionError> {
         let mut storage_contract = &mut self.account.state()?;
-        if let StorageContract::ReplicatorStorage { proofs, .. } = &mut storage_contract {
+        if let StorageContract::MinerStorage { proofs, .. } = &mut storage_contract {
             let segment_index = get_segment_from_slot(slot);
             let current_segment = get_segment_from_slot(current_slot);
 
@@ -208,7 +208,7 @@ impl<'a> StorageAccount<'a> {
         &mut self,
         segment: u64,
         proofs: Vec<(Pubkey, Vec<CheckedProof>)>,
-        replicator_accounts: &mut [StorageAccount],
+        storage_miner_accounts: &mut [StorageAccount],
     ) -> Result<(), InstructionError> {
         let mut storage_contract = &mut self.account.state()?;
         if let StorageContract::ValidatorStorage {
@@ -224,7 +224,7 @@ impl<'a> StorageAccount<'a> {
                 return Err(InstructionError::InvalidArgument);
             }
 
-            let accounts_and_proofs = replicator_accounts
+            let accounts_and_proofs = storage_miner_accounts
                 .iter_mut()
                 .filter_map(|account| {
                     account
@@ -232,7 +232,7 @@ impl<'a> StorageAccount<'a> {
                         .state()
                         .ok()
                         .map(move |contract| match contract {
-                            StorageContract::ReplicatorStorage { proofs, .. } => {
+                            StorageContract::MinerStorage { proofs, .. } => {
                                 if let Some(proofs) = proofs.get(&segment_index).cloned() {
                                     Some((account, proofs))
                                 } else {
@@ -313,7 +313,7 @@ impl<'a> StorageAccount<'a> {
             mining_pool.account.difs -= reward;
             self.account.difs += reward;
             self.account.set_state(storage_contract)
-        } else if let StorageContract::ReplicatorStorage {
+        } else if let StorageContract::MinerStorage {
             proofs,
             reward_validations,
         } = &mut storage_contract
@@ -368,7 +368,7 @@ impl<'a> StorageAccount<'a> {
             let total_proofs = checked_proofs.len() as u64;
             let num_validations = count_valid_proofs(&checked_proofs);
             let reward =
-                num_validations * TOTAL_REPLICATOR_REWARDS * (num_validations / total_proofs);
+                num_validations * TOTAL_STORAGE_MINER_REWARDS * (num_validations / total_proofs);
             mining_pool.account.difs -= reward;
             self.account.difs += reward;
             self.account.set_state(storage_contract)
@@ -386,7 +386,7 @@ fn store_validation_result(
 ) -> Result<(), InstructionError> {
     let mut storage_contract = storage_account.account.state()?;
     match &mut storage_contract {
-        StorageContract::ReplicatorStorage {
+        StorageContract::MinerStorage {
             proofs,
             reward_validations,
             ..
@@ -456,7 +456,7 @@ mod tests {
         if let StorageContract::ValidatorStorage { .. } = contract {
             assert!(true)
         }
-        if let StorageContract::ReplicatorStorage { .. } = &mut contract {
+        if let StorageContract::MinerStorage { .. } = &mut contract {
             panic!("Contract should not decode into two types");
         }
 
@@ -467,10 +467,10 @@ mod tests {
             reward_validations: HashMap::new(),
         };
         storage_account.account.set_state(&contract).unwrap();
-        if let StorageContract::ReplicatorStorage { .. } = contract {
+        if let StorageContract::MinerStorage { .. } = contract {
             panic!("Wrong contract type");
         }
-        contract = StorageContract::ReplicatorStorage {
+        contract = StorageContract::MinerStorage {
             proofs: HashMap::new(),
             reward_validations: HashMap::new(),
         };
@@ -514,7 +514,7 @@ mod tests {
             proof_map.insert(proof.sha_state, proof.clone());
             let mut proofs = HashMap::new();
             proofs.insert(0, proof_map);
-            *storage_contract = StorageContract::ReplicatorStorage {
+            *storage_contract = StorageContract::MinerStorage {
                 proofs,
                 reward_validations: HashMap::new(),
             };

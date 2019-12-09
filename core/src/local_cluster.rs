@@ -525,7 +525,7 @@ impl LocalCluster {
     ) -> Result<()> {
         let message = Message::new_with_payer(
             if storage_miner {
-                storage_instruction::create_replicator_storage_account(
+                storage_instruction::create_miner_storage_account(
                     &from_keypair.pubkey(),
                     &storage_keypair.pubkey(),
                     1,

@@ -28,11 +28,11 @@ pub fn process_instruction(
             }
             storage_account.initialize_mining_pool()
         }
-        StorageInstruction::InitializeReplicatorStorage => {
+        StorageInstruction::InitializeMinerStorage => {
             if !rest.is_empty() {
                 Err(InstructionError::InvalidArgument)?;
             }
-            storage_account.initialize_replicator_storage()
+            storage_account.initialize_storage_miner_storage()
         }
         StorageInstruction::InitializeValidatorStorage => {
             if !rest.is_empty() {
@@ -96,7 +96,7 @@ mod tests {
     use super::*;
     use crate::storage_contract::{
         CheckedProof, Proof, ProofStatus, StorageContract, STORAGE_ACCOUNT_SPACE,
-        TOTAL_REPLICATOR_REWARDS, TOTAL_VALIDATOR_REWARDS,
+        TOTAL_STORAGE_MINER_REWARDS, TOTAL_VALIDATOR_REWARDS,
     };
     use crate::storage_instruction;
     use crate::SLOTS_PER_SEGMENT;
@@ -154,7 +154,7 @@ mod tests {
         };
         {
             let mut storage_account = StorageAccount::new(&mut account);
-            storage_account.initialize_replicator_storage().unwrap();
+            storage_account.initialize_storage_miner_storage().unwrap();
         }
 
         let ix = storage_instruction::mining_proof(
@@ -239,7 +239,7 @@ mod tests {
         accounts[0].data.resize(STORAGE_ACCOUNT_SPACE as usize, 0);
         {
             let mut storage_account = StorageAccount::new(&mut accounts[0]);
-            storage_account.initialize_replicator_storage().unwrap();
+            storage_account.initialize_storage_miner_storage().unwrap();
         }
 
         let ix =
@@ -259,11 +259,11 @@ mod tests {
         let (genesis_block, mint_keypair) = create_genesis_block(1000);
         let mint_pubkey = mint_keypair.pubkey();
 
-        let replicator_1_storage_keypair = Keypair::new();
-        let replicator_1_storage_id = replicator_1_storage_keypair.pubkey();
+        let miner_1_storage_keypair = Keypair::new();
+        let miner_1_storage_id = miner_1_storage_keypair.pubkey();
 
-        let replicator_2_storage_keypair = Keypair::new();
-        let replicator_2_storage_id = replicator_2_storage_keypair.pubkey();
+        let miner_2_storage_keypair = Keypair::new();
+        let miner_2_storage_id = miner_2_storage_keypair.pubkey();
 
         let validator_storage_keypair = Keypair::new();
         let validator_storage_id = validator_storage_keypair.pubkey();
@@ -281,7 +281,7 @@ mod tests {
             &bank_client,
             &mint_keypair,
             &[&validator_storage_id],
-            &[&replicator_1_storage_id, &replicator_2_storage_id],
+            &[&miner_1_storage_id, &miner_2_storage_id],
             10,
         );
         let message = Message::new(storage_instruction::create_mining_pool_account(
@@ -315,20 +315,20 @@ mod tests {
         let mut checked_proofs: HashMap<_, Vec<_>> = HashMap::new();
         for slot in 0..5 {
             checked_proofs
-                .entry(replicator_1_storage_id)
+                .entry(miner_1_storage_id)
                 .or_default()
                 .push(submit_proof(
                     &mint_keypair,
-                    &replicator_1_storage_keypair,
+                    &miner_1_storage_keypair,
                     slot,
                     &bank_client,
                 ));
             checked_proofs
-                .entry(replicator_2_storage_id)
+                .entry(miner_2_storage_id)
                 .or_default()
                 .push(submit_proof(
                     &mint_keypair,
-                    &replicator_2_storage_keypair,
+                    &miner_2_storage_keypair,
                     slot,
                     &bank_client,
                 ));
@@ -407,13 +407,13 @@ mod tests {
         }
 
         assert_eq!(
-            bank_client.get_balance(&replicator_1_storage_id).unwrap(),
+            bank_client.get_balance(&miner_1_storage_id).unwrap(),
             10
         );
 
         let message = Message::new_with_payer(
             vec![storage_instruction::claim_reward(
-                &replicator_1_storage_id,
+                &miner_1_storage_id,
                 &mining_pool_pubkey,
                 slot,
             )],
@@ -423,7 +423,7 @@ mod tests {
 
         let message = Message::new_with_payer(
             vec![storage_instruction::claim_reward(
-                &replicator_2_storage_id,
+                &miner_2_storage_id,
                 &mining_pool_pubkey,
                 slot,
             )],
@@ -433,8 +433,8 @@ mod tests {
 
         // TODO enable when rewards are working
         assert_eq!(
-            bank_client.get_balance(&replicator_1_storage_id).unwrap(),
-            10 + (TOTAL_REPLICATOR_REWARDS * 5)
+            bank_client.get_balance(&miner_1_storage_id).unwrap(),
+            10 + (TOTAL_STORAGE_MINER_REWARDS * 5)
         );
     }
 
@@ -442,7 +442,7 @@ mod tests {
         client: &BankClient,
         mint: &Keypair,
         validator_accounts_to_create: &[&Pubkey],
-        replicator_accounts_to_create: &[&Pubkey],
+        storage_miner_accounts_to_create: &[&Pubkey],
         difs: u64,
     ) {
         let mut ixs: Vec<_> = validator_accounts_to_create
@@ -455,10 +455,10 @@ mod tests {
                 )
             })
             .collect();
-        replicator_accounts_to_create
+        storage_miner_accounts_to_create
             .into_iter()
             .for_each(|account| {
-                ixs.append(&mut storage_instruction::create_replicator_storage_account(
+                ixs.append(&mut storage_instruction::create_miner_storage_account(
                     &mint.pubkey(),
                     account,
                     difs,
@@ -575,7 +575,7 @@ mod tests {
             .transfer(10, &mint_keypair, &replicator_pubkey)
             .unwrap();
 
-        let message = Message::new(storage_instruction::create_replicator_storage_account(
+        let message = Message::new(storage_instruction::create_miner_storage_account(
             &mint_pubkey,
             &replicator_pubkey,
             1,

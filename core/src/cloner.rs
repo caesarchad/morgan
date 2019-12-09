@@ -502,7 +502,7 @@ impl Replicator {
         if balance.is_err() || balance.unwrap() == 0 {
             let (blockhash, _fee_calculator) = client.get_recent_blockhash().expect("blockhash");
 
-            let ix = storage_instruction::create_replicator_storage_account(
+            let ix = storage_instruction::create_miner_storage_account(
                 &keypair.pubkey(),
                 &storage_keypair.pubkey(),
                 1,

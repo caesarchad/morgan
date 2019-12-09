@@ -25,7 +25,7 @@ fn main() {
     } = cli_config;
 
     println!("Connecting to the cluster");
-    let (nodes, _replicators) =
+    let (nodes, _storage_miners) =
         discover_cluster(&entrypoint_addr, num_nodes).unwrap_or_else(|err| {
             eprintln!("Failed to discover {} nodes: {:?}", num_nodes, err);
             exit(1);
