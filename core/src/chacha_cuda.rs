@@ -164,7 +164,7 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_single";
         let ledger_path = get_tmp_ledger_path(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
 
         blocktree
             .write_entries(0, 0, 0, ticks_per_slot, &entries)
@@ -200,7 +200,7 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_multiple";
         let ledger_path = get_tmp_ledger_path(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         blocktree
             .write_entries(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
@@ -254,7 +254,7 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_bad_key_length";
         let ledger_path = get_tmp_ledger_path(ledger_dir);
         let samples = [0];
-        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         assert!(chacha_cbc_encrypt_file_many_keys(&blocktree, 0, &mut keys, &samples,).is_err());
     }
 }

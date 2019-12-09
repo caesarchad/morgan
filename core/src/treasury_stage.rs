@@ -877,7 +877,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, _entry_receiever) =
                 create_test_recorder(&bank, &blocktree);
@@ -912,7 +912,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
@@ -961,7 +961,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
@@ -1104,7 +1104,7 @@ mod tests {
                 // start a banking_stage to eat verified receiver
                 let bank = Arc::new(Bank::new(&genesis_block));
                 let blocktree = Arc::new(
-                    BlockBufferPool::open(&ledger_path)
+                    BlockBufferPool::open_ledger_file(&ledger_path)
                         .expect("Expected to be able to open database ledger"),
                 );
                 let (exit, poh_recorder, poh_service, entry_receiver) =
@@ -1169,7 +1169,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
@@ -1485,7 +1485,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
@@ -1573,7 +1573,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, _entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),

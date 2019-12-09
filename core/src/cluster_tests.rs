@@ -94,7 +94,7 @@ pub fn fullnode_exit(entry_point_info: &ContactInfo, nodes: usize) {
 }
 
 pub fn verify_ledger_ticks(ledger_path: &str, ticks_per_slot: usize) {
-    let ledger = BlockBufferPool::open(ledger_path).unwrap();
+    let ledger = BlockBufferPool::open_ledger_file(ledger_path).unwrap();
     let zeroth_slot = ledger.get_slot_entries(0, 0, None).unwrap();
     let last_id = zeroth_slot.last().unwrap().hash;
     let next_slots = ledger.get_slots_since(&[0]).unwrap().remove(&0).unwrap();

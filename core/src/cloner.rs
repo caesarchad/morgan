@@ -213,7 +213,7 @@ impl Replicator {
         let bank = Bank::new_with_paths(&genesis_block, None);
         let genesis_blockhash = bank.last_blockhash();
         let blocktree = Arc::new(
-            BlockBufferPool::open(ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open_ledger_file(ledger_path).expect("Expected to be able to open database ledger"),
         );
 
         let gossip_service = GossipService::new(

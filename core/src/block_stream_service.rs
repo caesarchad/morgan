@@ -185,7 +185,7 @@ mod test {
         genesis_block.ticks_per_slot = ticks_per_slot;
 
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
-        let blocktree = BlockBufferPool::open(&ledger_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
         // Set up blockstream
         let mut blockstream = Blockstream::new("test_stream".to_string());

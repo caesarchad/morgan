@@ -338,7 +338,7 @@ mod test {
         entry_receiver: Receiver<WorkingBankEntries>,
     ) -> MockBroadcastStage {
         // Make the database ledger
-        let blocktree = Arc::new(BlockBufferPool::open(ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(ledger_path).unwrap());
 
         // Make the leader node and scheduler
         let leader_info = Node::new_localhost_with_pubkey(leader_pubkey);

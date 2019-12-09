@@ -646,7 +646,7 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(64);
-        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         let slot = 1;
         let bank = Arc::new(Bank::new(&genesis_block));
         let bank_forks = Arc::new(RwLock::new(BankForks::new_from_banks(&[bank], 0)));
@@ -739,7 +739,7 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(128);
-        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         blocktree
             .write_entries(1, 0, 0, ticks_per_slot, &entries)
             .unwrap();

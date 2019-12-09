@@ -55,7 +55,7 @@ fn main() {
         exit(1);
     });
 
-    let blocktree = match BlockBufferPool::open(ledger_path) {
+    let blocktree = match BlockBufferPool::open_ledger_file(ledger_path) {
         Ok(blocktree) => blocktree,
         Err(err) => {
             eprintln!("Failed to open ledger at {}: {}", ledger_path, err);

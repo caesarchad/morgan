@@ -1894,7 +1894,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
             let me = ContactInfo::new(
                 &Pubkey::new_rand(),
                 socketaddr!("127.0.0.1:1234"),
@@ -1953,7 +1953,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
             let rv =
                 ClusterInfo::run_highest_window_request(&socketaddr_any!(), Some(&blocktree), 0, 0);
             assert!(rv.is_empty());
@@ -2000,7 +2000,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
             let rv = ClusterInfo::run_orphan(&socketaddr_any!(), Some(&blocktree), 2, 0);
             assert!(rv.is_empty());
 

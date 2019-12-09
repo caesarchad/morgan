@@ -282,7 +282,7 @@ mod test {
     #[test]
     fn test_process_blob() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = Arc::new(BlockBufferPool::open(&blocktree_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&blocktree_path).unwrap());
         let num_entries = 10;
         let original_entries = make_tiny_test_entries(num_entries);
         let shared_blobs = original_entries.clone().to_shared_blobs();

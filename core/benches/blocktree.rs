@@ -16,7 +16,7 @@ use test::Bencher;
 // Given some blobs and a ledger at ledger_path, benchmark writing the blobs to the ledger
 fn bench_write_blobs(bench: &mut Bencher, blobs: &mut Vec<Blob>, ledger_path: &str) {
     let blocktree =
-        BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+        BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     let num_blobs = blobs.len();
 
@@ -95,7 +95,7 @@ fn bench_write_big(bench: &mut Bencher) {
 fn bench_read_sequential(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     let mut blocktree =
-        BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+        BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     // Insert some big and small blobs into the ledger
     let num_small_blobs = 32 * 1024;
@@ -122,7 +122,7 @@ fn bench_read_sequential(bench: &mut Bencher) {
 fn bench_read_random(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     let mut blocktree =
-        BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+        BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     // Insert some big and small blobs into the ledger
     let num_small_blobs = 32 * 1024;
@@ -153,7 +153,7 @@ fn bench_read_random(bench: &mut Bencher) {
 fn bench_insert_data_blob_small(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     let blocktree =
-        BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+        BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
     let num_entries = 32 * 1024;
     let entries = make_tiny_test_entries(num_entries);
     let mut blobs = entries.to_blobs();
@@ -176,7 +176,7 @@ fn bench_insert_data_blob_small(bench: &mut Bencher) {
 fn bench_insert_data_blob_big(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     let blocktree =
-        BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+        BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
     let num_entries = 32 * 1024;
     let entries = make_large_test_entries(num_entries);
     let mut shared_blobs = entries.to_shared_blobs();

@@ -698,7 +698,7 @@ pub mod test {
     /// BlockBufferPool should have correct SlotMeta and ErasureMeta and so on but will not have done any
     /// possible recovery.
     pub fn generate_blocktree_with_coding(ledger_path: &str, specs: &[SlotSpec]) -> BlockBufferPool {
-        let blocktree = BlockBufferPool::open(ledger_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(ledger_path).unwrap();
 
         let model = generate_ledger_model(specs);
         for slot_model in model {

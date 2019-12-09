@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_serve_repairs_to_repairee() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
         let blobs_per_slot = 5;
         let num_slots = 10;
         assert_eq!(num_slots % 2, 0);
@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn test_no_repair_past_confirmed_epoch() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
         let stakers_slot_offset = 16;
         let slots_per_epoch = stakers_slot_offset * 2;
         let epoch_schedule = EpochSchedule::new(slots_per_epoch, stakers_slot_offset, false);

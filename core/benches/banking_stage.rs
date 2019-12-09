@@ -57,7 +57,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
     let my_pubkey = Pubkey::new_rand();
     {
         let blocktree = Arc::new(
-            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, _signal_receiver) =
             create_test_recorder(&bank, &blocktree);
@@ -153,7 +153,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     {
         let blocktree = Arc::new(
-            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);
@@ -279,7 +279,7 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     {
         let blocktree = Arc::new(
-            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);

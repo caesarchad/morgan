@@ -108,7 +108,7 @@ pub const ROOT_CF: &str = "root";
 
 impl BlockBufferPool {
     /// Opens a Ledger in directory, provides "infinite" window of blobs
-    pub fn open(ledger_path: &str) -> Result<BlockBufferPool> {
+    pub fn open_ledger_file(ledger_path: &str) -> Result<BlockBufferPool> {
         use std::path::Path;
 
         fs::create_dir_all(&ledger_path)?;
@@ -157,7 +157,7 @@ impl BlockBufferPool {
     pub fn open_with_signal(
         ledger_path: &str,
     ) -> Result<(Self, Receiver<bool>, CompletedSlotsReceiver)> {
-        let mut blocktree = Self::open(ledger_path)?;
+        let mut blocktree = Self::open_ledger_file(ledger_path)?;
         let (signal_sender, signal_receiver) = sync_channel(1);
         let (completed_slots_sender, completed_slots_receiver) =
             sync_channel(MAX_COMPLETED_SLOTS_IN_CHANNEL);
@@ -1536,7 +1536,7 @@ pub fn create_new_ledger(ledger_path: &str, genesis_block: &GenesisBlock) -> Res
     genesis_block.write(&ledger_path)?;
 
     // Fill slot 0 with ticks that link back to the genesis_block to bootstrap the ledger.
-    let blocktree = BlockBufferPool::open(ledger_path)?;
+    let blocktree = BlockBufferPool::open_ledger_file(ledger_path)?;
     let entries = crate::entry_info::create_ticks(ticks_per_slot, genesis_block.hash());
     blocktree.write_entries(0, 0, 0, ticks_per_slot, &entries)?;
 
@@ -1547,7 +1547,7 @@ pub fn genesis<'a, I>(ledger_path: &str, keypair: &Keypair, entries: I) -> Resul
 where
     I: IntoIterator<Item = &'a Entry>,
 {
-    let blocktree = BlockBufferPool::open(ledger_path)?;
+    let blocktree = BlockBufferPool::open_ledger_file(ledger_path)?;
 
     // TODO sign these blobs with keypair
     let blobs: Vec<_> = entries
@@ -1620,12 +1620,12 @@ macro_rules! tmp_copy_blocktree {
 pub fn tmp_copy_blocktree(from: &str, name: &str) -> String {
     let path = get_tmp_ledger_path(name);
 
-    let blocktree = BlockBufferPool::open(from).unwrap();
+    let blocktree = BlockBufferPool::open_ledger_file(from).unwrap();
     let blobs = blocktree.read_ledger_blobs();
     let genesis_block = GenesisBlock::load(from).unwrap();
 
     BlockBufferPool::destroy(&path).expect("Expected successful database destruction");
-    let blocktree = BlockBufferPool::open(&path).unwrap();
+    let blocktree = BlockBufferPool::open_ledger_file(&path).unwrap();
     blocktree.write_blobs(blobs).unwrap();
     genesis_block.write(&path).unwrap();
 
@@ -1659,7 +1659,7 @@ pub mod tests {
             let ticks_per_slot = 10;
             let num_slots = 10;
             let num_ticks = ticks_per_slot * num_slots;
-            let ledger = BlockBufferPool::open(&ledger_path).unwrap();
+            let ledger = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
             let ticks = create_ticks(num_ticks, Hash::default());
             ledger
@@ -1734,7 +1734,7 @@ pub mod tests {
     #[test]
     fn test_put_get_simple() {
         let ledger_path = get_tmp_ledger_path("test_put_get_simple");
-        let ledger = BlockBufferPool::open(&ledger_path).unwrap();
+        let ledger = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
         // Test meta column family
         let meta = SlotMeta::new(0, 1);
@@ -1788,7 +1788,7 @@ pub mod tests {
         let blobs: Vec<&Blob> = blob_locks.iter().map(|b| &**b).collect();
 
         let ledger_path = get_tmp_ledger_path("test_read_blobs_bytes");
-        let ledger = BlockBufferPool::open(&ledger_path).unwrap();
+        let ledger = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
         ledger.write_blobs(blobs.clone()).unwrap();
 
         let mut buf = [0; 1024];
@@ -1851,7 +1851,7 @@ pub mod tests {
         let (blobs, entries) = make_slot_entries(0, 0, num_entries);
 
         let ledger_path = get_tmp_ledger_path("test_insert_data_blobs_basic");
-        let ledger = BlockBufferPool::open(&ledger_path).unwrap();
+        let ledger = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
         // Insert last blob, we're missing the other blobs, so no consecutive
         // blobs starting from slot 0, index 0 should exist.
@@ -1896,7 +1896,7 @@ pub mod tests {
         let (blobs, entries) = make_slot_entries(0, 0, num_entries);
 
         let ledger_path = get_tmp_ledger_path("test_insert_data_blobs_reverse");
-        let ledger = BlockBufferPool::open(&ledger_path).unwrap();
+        let ledger = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
         // Insert blobs in reverse, check for consecutive returned blobs
         for i in (0..num_entries).rev() {
@@ -1934,7 +1934,7 @@ pub mod tests {
         let slot = 0;
         let blocktree_path = get_tmp_ledger_path("test_iteration_order");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Write entries
             let num_entries = 8;
@@ -1972,7 +1972,7 @@ pub mod tests {
     pub fn test_get_slot_entries1() {
         let blocktree_path = get_tmp_ledger_path("test_get_slot_entries1");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let entries = make_tiny_test_entries(8);
             let mut blobs = entries.clone().to_single_entry_blobs();
             for (i, b) in blobs.iter_mut().enumerate() {
@@ -2004,7 +2004,7 @@ pub mod tests {
     pub fn test_get_slot_entries2() {
         let blocktree_path = get_tmp_ledger_path("test_get_slot_entries2");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Write entries
             let num_slots = 5 as u64;
@@ -2035,7 +2035,7 @@ pub mod tests {
         // Test inserting/fetching blobs which contain multiple entries per blob
         let blocktree_path = get_tmp_ledger_path("test_get_slot_entries3");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let num_slots = 5 as u64;
             let blobs_per_slot = 5 as u64;
             let entry_serialized_size =
@@ -2067,7 +2067,7 @@ pub mod tests {
     pub fn test_insert_data_blobs_consecutive() {
         let blocktree_path = get_tmp_ledger_path("test_insert_data_blobs_consecutive");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             for i in 0..4 {
                 let slot = i;
                 let parent_slot = if i == 0 { 0 } else { i - 1 };
@@ -2119,7 +2119,7 @@ pub mod tests {
         // Create RocksDb ledger
         let blocktree_path = get_tmp_ledger_path("test_insert_data_blobs_duplicate");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Make duplicate entries and blobs
             let num_duplicates = 2;
@@ -2173,7 +2173,7 @@ pub mod tests {
         {
             genesis(&ledger_path, &Keypair::new(), &entries).unwrap();
 
-            let ledger = BlockBufferPool::open(&ledger_path).expect("open failed");
+            let ledger = BlockBufferPool::open_ledger_file(&ledger_path).expect("open failed");
 
             let read_entries: Vec<Entry> =
                 ledger.read_ledger().expect("read_ledger failed").collect();
@@ -2191,7 +2191,7 @@ pub mod tests {
             // put entries except last 2 into ledger
             genesis(&ledger_path, &Keypair::new(), &entries[..entries.len() - 2]).unwrap();
 
-            let ledger = BlockBufferPool::open(&ledger_path).expect("open failed");
+            let ledger = BlockBufferPool::open_ledger_file(&ledger_path).expect("open failed");
 
             // now write the last entry, ledger has a hole in it one before the end
             // +-+-+-+-+-+-+-+    +-+
@@ -2396,7 +2396,7 @@ pub mod tests {
         {
             let entries_per_slot = 2;
             let num_slots = 3;
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Construct the blobs
             let (blobs, _) = make_many_slot_entries(0, num_slots, entries_per_slot);
@@ -2458,7 +2458,7 @@ pub mod tests {
     pub fn test_handle_chaining_missing_slots() {
         let blocktree_path = get_tmp_ledger_path("test_handle_chaining_missing_slots");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let num_slots = 30;
             let entries_per_slot = 2;
 
@@ -2538,7 +2538,7 @@ pub mod tests {
     pub fn test_forward_chaining_is_connected() {
         let blocktree_path = get_tmp_ledger_path("test_forward_chaining_is_connected");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let num_slots = 15;
             let entries_per_slot = 2;
             assert!(entries_per_slot > 1);
@@ -2621,7 +2621,7 @@ pub mod tests {
     pub fn test_chaining_tree() {
         let blocktree_path = get_tmp_ledger_path("test_chaining_tree");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let num_tree_levels = 6;
             assert!(num_tree_levels > 1);
             let branching_factor: u64 = 4;
@@ -2722,7 +2722,7 @@ pub mod tests {
         let blocktree_path = get_tmp_ledger_path("test_get_slots_since");
 
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Slot doesn't exist
             assert!(blocktree.get_slots_since(&vec![0]).unwrap().is_empty());
@@ -2758,7 +2758,7 @@ pub mod tests {
     fn test_orphans() {
         let blocktree_path = get_tmp_ledger_path("test_orphans");
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Create blobs and entries
             let entries_per_slot = 1;
@@ -2814,7 +2814,7 @@ pub mod tests {
     fn test_insert_data_blobs_slots(name: &str, should_bulk_write: bool) {
         let blocktree_path = get_tmp_ledger_path(name);
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Create blobs and entries
             let num_entries = 20 as u64;
@@ -2870,7 +2870,7 @@ pub mod tests {
     fn test_find_missing_data_indexes() {
         let slot = 0;
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
         // Write entries
         let gap = 10;
@@ -2955,7 +2955,7 @@ pub mod tests {
         let slot = 0;
 
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
         // Early exit conditions
         let empty: Vec<u64> = vec![];
@@ -2999,7 +2999,7 @@ pub mod tests {
     pub fn test_no_missing_blob_indexes() {
         let slot = 0;
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
         // Write entries
         let num_entries = 10;
@@ -3029,7 +3029,7 @@ pub mod tests {
     pub fn test_should_insert_blob() {
         let (mut blobs, _) = make_slot_entries(0, 0, 20);
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
         // Insert the first 5 blobs, we don't have a "is_last" blob yet
         blocktree.insert_data_blobs(&blobs[0..5]).unwrap();
@@ -3088,7 +3088,7 @@ pub mod tests {
     pub fn test_insert_multiple_is_last() {
         let (mut blobs, _) = make_slot_entries(0, 0, 20);
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
         // Inserting multiple blobs with the is_last flag set should only insert
         // the first blob with the "is_last" flag, and drop the rest
@@ -3112,7 +3112,7 @@ pub mod tests {
     fn test_slot_data_iterator() {
         // Construct the blobs
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
         let blobs_per_slot = 10;
         let slots = vec![2, 4, 8, 12];
         let all_blobs = make_chaining_slot_entries(&slots, blobs_per_slot);
@@ -3139,7 +3139,7 @@ pub mod tests {
     #[test]
     fn test_set_root() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
         blocktree.set_root(0, 0).unwrap();
         let chained_slots = vec![0, 2, 4, 7, 12, 15];
 
@@ -3190,7 +3190,7 @@ pub mod tests {
             use ErasureMetaStatus::{DataFull, StillNeed};
 
             let path = get_tmp_ledger_path!();
-            let blocktree = BlockBufferPool::open(&path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&path).unwrap();
 
             // two erasure sets
             let num_blobs = NUM_DATA as u64 * 2;
@@ -3309,7 +3309,7 @@ pub mod tests {
 
             let ledger_path = get_tmp_ledger_path!();
 
-            let blocktree = BlockBufferPool::open(&ledger_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
             let num_sets = 3;
             let data_blobs = make_slot_entries(slot, 0, num_sets * NUM_DATA as u64)
                 .0
@@ -3388,7 +3388,7 @@ pub mod tests {
 
             morgan_logger::setup();
             let ledger_path = get_tmp_ledger_path!();
-            let blocktree = BlockBufferPool::open(&ledger_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
             let data_blobs = make_slot_entries(SLOT, 0, NUM_DATA as u64)
                 .0
                 .into_iter()
@@ -3482,7 +3482,7 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let model = generate_ledger_model(specs);
-            let blocktree = Arc::new(BlockBufferPool::open(&path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&path).unwrap());
 
             // Write to each slot in a different thread simultaneously.
             // These writes should trigger the recovery. Every erasure set should have all of its

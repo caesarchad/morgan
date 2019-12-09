@@ -428,7 +428,7 @@ mod test {
     pub fn test_repair_orphan() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             // Create some orphan slots
             let (mut blobs, _) = make_slot_entries(1, 0, 1);
@@ -452,7 +452,7 @@ mod test {
     pub fn test_repair_empty_slot() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             let (blobs, _) = make_slot_entries(2, 0, 1);
 
@@ -473,7 +473,7 @@ mod test {
     pub fn test_generate_repairs() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             let nth = 3;
             let num_entries_per_slot = 5 * nth;
@@ -517,7 +517,7 @@ mod test {
     pub fn test_generate_highest_repair() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -544,7 +544,7 @@ mod test {
     pub fn test_repair_range() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             let slots: Vec<u64> = vec![1, 3, 5, 7, 8];
             let num_entries_per_slot = 10;
@@ -591,7 +591,7 @@ mod test {
     pub fn test_repair_range_highest() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -634,7 +634,7 @@ mod test {
     pub fn test_get_completed_slots_past_root() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
             let num_entries_per_slot = 10;
             let root = 10;
 

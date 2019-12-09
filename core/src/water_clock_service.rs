@@ -133,7 +133,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let poh_config = Arc::new(PohConfig {
                 hashes_per_tick: Some(2),
                 target_tick_duration: Duration::from_millis(42),
