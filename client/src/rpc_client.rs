@@ -1,6 +1,6 @@
 use crate::client_error::ClientError;
-use crate::generic_rpc_client_request::GenericRpcClientRequest;
-use crate::mock_rpc_client_request::MockRpcClientRequest;
+use crate::rpc_client_request::GenericRpcClientRequest;
+use crate::rpc_client_request::MockRpcClientRequest;
 use crate::rpc_client_request::RpcClientRequest;
 use crate::rpc_request::RpcRequest;
 use bincode::serialize;
@@ -543,7 +543,7 @@ pub fn get_rpc_request_str(rpc_addr: SocketAddr, tls: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock_rpc_client_request::{PUBKEY, SIGNATURE};
+    use crate::rpc_client_request::{PUBKEY, SIGNATURE};
     use jsonrpc_core::{Error, IoHandler, Params};
     use jsonrpc_http_server::{AccessControlAllowOrigin, DomainsValidation, ServerBuilder};
     use serde_json::Number;
