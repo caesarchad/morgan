@@ -1,7 +1,7 @@
 //! The `banking_stage` processes Transaction messages. It is intended to be used
 //! to contruct a software pipeline. The stage uses all available CPU cores and
 //! can do its processing in parallel with signature verification on the GPU.
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::cluster_message::ClusterInfo;
 use crate::entry_info;
 use crate::entry_info::{hash_transactions, Entry};
@@ -822,7 +822,7 @@ impl Service for BankingStage {
 
 pub fn create_test_recorder(
     bank: &Arc<Bank>,
-    blocktree: &Arc<Blocktree>,
+    blocktree: &Arc<BlockBufferPool>,
 ) -> (
     Arc<AtomicBool>,
     Arc<Mutex<PohRecorder>>,
@@ -877,7 +877,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, _entry_receiever) =
                 create_test_recorder(&bank, &blocktree);
@@ -895,7 +895,7 @@ mod tests {
             banking_stage.join().unwrap();
             poh_service.join().unwrap();
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -912,7 +912,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
@@ -943,7 +943,7 @@ mod tests {
             assert_eq!(entries[entries.len() - 1].hash, bank.last_blockhash());
             banking_stage.join().unwrap();
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -961,7 +961,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, poh_recorder, poh_service, entry_receiver) =
                 create_test_recorder(&bank, &blocktree);
@@ -1051,7 +1051,7 @@ mod tests {
             drop(entry_receiver);
             banking_stage.join().unwrap();
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1104,7 +1104,7 @@ mod tests {
                 // start a banking_stage to eat verified receiver
                 let bank = Arc::new(Bank::new(&genesis_block));
                 let blocktree = Arc::new(
-                    Blocktree::open(&ledger_path)
+                    BlockBufferPool::open(&ledger_path)
                         .expect("Expected to be able to open database ledger"),
                 );
                 let (exit, poh_recorder, poh_service, entry_receiver) =
@@ -1150,7 +1150,7 @@ mod tests {
             // the account balance below zero before the credit is added.
             assert_eq!(bank.get_balance(&alice.pubkey()), 1);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1169,7 +1169,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
@@ -1234,7 +1234,7 @@ mod tests {
             let (_, entries) = entry_receiver.recv().unwrap();
             assert_eq!(entries[0].0.transactions.len(), transactions.len() - 1);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1485,7 +1485,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
@@ -1545,7 +1545,7 @@ mod tests {
 
             assert_eq!(bank.get_balance(&pubkey), 1);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1573,7 +1573,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (poh_recorder, _entry_receiver) = PohRecorder::new(
                 bank.tick_height(),
                 bank.last_blockhash(),
@@ -1599,7 +1599,7 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(unprocessed.len(), 1);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use morgan_storage_api::SLOTS_PER_SEGMENT;
 use std::fs::File;
 use std::io;
@@ -33,7 +33,7 @@ pub fn chacha_cbc_encrypt(input: &[u8], output: &mut [u8], key: &[u8], ivec: &mu
 }
 
 pub fn chacha_cbc_encrypt_ledger(
-    blocktree: &Arc<Blocktree>,
+    blocktree: &Arc<BlockBufferPool>,
     slice: u64,
     out_path: &Path,
     ivec: &mut [u8; CHACHA_BLOCK_SIZE],
@@ -175,7 +175,7 @@ impl std::iter::FromIterator<[u8; 2]> for WrappedShard {
 #[cfg(test)]
 mod tests {
     use crate::block_buffer_pool::get_tmp_ledger_path;
-    use crate::block_buffer_pool::Blocktree;
+    use crate::block_buffer_pool::BlockBufferPool;
     use crate::chacha::chacha_cbc_encrypt_ledger;
     use crate::entry_info::Entry;
     use crate::create_keys::GenKeys;
@@ -220,7 +220,7 @@ mod tests {
         let ledger_dir = "chacha_test_encrypt_file";
         let ledger_path = get_tmp_ledger_path(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
         let out_path = Path::new("test_chacha_encrypt_file_output.txt.enc");
 
         let entries = make_tiny_deterministic_test_entries(32);

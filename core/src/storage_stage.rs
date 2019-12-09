@@ -4,7 +4,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 #[cfg(all(feature = "chacha", feature = "cuda"))]
 use crate::chacha_cuda::chacha_cbc_encrypt_file_many_keys;
 use crate::cluster_message::ClusterInfo;
@@ -135,7 +135,7 @@ impl StorageStage {
     pub fn new(
         storage_state: &StorageState,
         slot_receiver: Receiver<Vec<u64>>,
-        blocktree: Option<Arc<Blocktree>>,
+        blocktree: Option<Arc<BlockBufferPool>>,
         keypair: &Arc<Keypair>,
         storage_keypair: &Arc<Keypair>,
         exit: &Arc<AtomicBool>,
@@ -321,7 +321,7 @@ impl StorageStage {
     fn process_entry_crossing(
         storage_keypair: &Arc<Keypair>,
         state: &Arc<RwLock<StorageStateInner>>,
-        _blocktree: &Arc<Blocktree>,
+        _blocktree: &Arc<BlockBufferPool>,
         entry_id: Hash,
         slot: u64,
         instruction_sender: &InstructionSender,
@@ -468,7 +468,7 @@ impl StorageStage {
         storage_keypair: &Arc<Keypair>,
         storage_state: &Arc<RwLock<StorageStateInner>>,
         slot_receiver: &Receiver<Vec<u64>>,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         slot_count: &mut u64,
         last_root: &mut u64,
         current_key_idx: &mut usize,
@@ -581,7 +581,7 @@ impl Service for StorageStage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block_buffer_pool::{create_new_tmp_ledger, Blocktree};
+    use crate::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
     use crate::cluster_message::ClusterInfo;
     use crate::connection_info::ContactInfo;
     use crate::entry_info::{make_tiny_test_entries, Entry};
@@ -646,7 +646,7 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(64);
-        let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
         let slot = 1;
         let bank = Arc::new(Bank::new(&genesis_block));
         let bank_forks = Arc::new(RwLock::new(BankForks::new_from_banks(&[bank], 0)));
@@ -739,7 +739,7 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(128);
-        let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
         blocktree
             .write_entries(1, 0, 0, ticks_per_slot, &entries)
             .unwrap();

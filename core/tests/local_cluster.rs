@@ -1,6 +1,6 @@
 extern crate morgan;
 
-use crate::morgan::block_buffer_pool::Blocktree;
+use crate::morgan::block_buffer_pool::BlockBufferPool;
 use hashbrown::HashSet;
 use log::*;
 use morgan::cluster::Cluster;
@@ -302,7 +302,7 @@ fn run_repairman_catchup(num_repairmen: u64) {
 
     // Expect at least the the first two epochs to have been rooted after waiting 3 epochs.
     let num_expected_slots = num_slots_per_epoch * 2;
-    let validator_ledger = Blocktree::open(&validator_ledger_path).unwrap();
+    let validator_ledger = BlockBufferPool::open(&validator_ledger_path).unwrap();
     let validator_rooted_slots: Vec<_> =
         validator_ledger.rooted_slot_iterator(0).unwrap().collect();
 

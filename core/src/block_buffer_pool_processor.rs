@@ -1,6 +1,6 @@
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::entry_info::{Entry, EntrySlice};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use rayon::prelude::*;
@@ -140,7 +140,7 @@ pub enum BlocktreeProcessorError {
 
 pub fn process_blocktree(
     genesis_block: &GenesisBlock,
-    blocktree: &Blocktree,
+    blocktree: &BlockBufferPool,
     account_paths: Option<String>,
 ) -> result::Result<(BankForks, Vec<BankForksInfo>, LeaderScheduleCache), BlocktreeProcessorError> {
     let now = Instant::now();
@@ -421,7 +421,7 @@ pub mod tests {
     use morgan_interface::transaction::TransactionError;
 
     pub fn fill_blocktree_slot_with_ticks(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         ticks_per_slot: u64,
         slot: u64,
         parent_slot: u64,
@@ -460,7 +460,7 @@ pub mod tests {
         debug!("ledger_path: {:?}", ledger_path);
 
         let blocktree =
-            Blocktree::open(&ledger_path).expect("Expected to successfully open database ledger");
+            BlockBufferPool::open(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Write slot 1
         // slot 1, points at slot 0.  Missing one tick
@@ -520,7 +520,7 @@ pub mod tests {
 
         */
         let blocktree =
-            Blocktree::open(&ledger_path).expect("Expected to successfully open database ledger");
+            BlockBufferPool::open(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Fork 1, ending at slot 3
         let last_slot1_entry_hash =
@@ -607,7 +607,7 @@ pub mod tests {
 
         */
         let blocktree =
-            Blocktree::open(&ledger_path).expect("Expected to successfully open database ledger");
+            BlockBufferPool::open(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Fork 1, ending at slot 3
         let last_slot1_entry_hash =
@@ -696,7 +696,7 @@ pub mod tests {
         let mut last_entry_hash = blockhash;
 
         let blocktree =
-            Blocktree::open(&ledger_path).expect("Expected to successfully open database ledger");
+            BlockBufferPool::open(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Let last_slot be the number of slots in the first two epochs
         let epoch_schedule = get_epoch_schedule(&genesis_block, None);
@@ -851,7 +851,7 @@ pub mod tests {
         entries.extend(create_ticks(genesis_block.ticks_per_slot, last_entry_hash));
 
         let blocktree =
-            Blocktree::open(&ledger_path).expect("Expected to successfully open database ledger");
+            BlockBufferPool::open(&ledger_path).expect("Expected to successfully open database ledger");
         blocktree
             .write_entries(1, 0, 0, genesis_block.ticks_per_slot, &entries)
             .unwrap();
@@ -886,7 +886,7 @@ pub mod tests {
         genesis_block.ticks_per_slot = 1;
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
-        let blocktree = Blocktree::open(&ledger_path).unwrap();
+        let blocktree = BlockBufferPool::open(&ledger_path).unwrap();
         let (bank_forks, bank_forks_info, _) =
             process_blocktree(&genesis_block, &blocktree, None).unwrap();
 

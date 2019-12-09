@@ -8,7 +8,7 @@ use log::*;
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use morgan::treasury_stage::{create_test_recorder, BankingStage};
-use morgan::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+use morgan::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
 use morgan::cluster_message::ClusterInfo;
 use morgan::cluster_message::Node;
 use morgan::genesis_utils::{create_genesis_block, GenesisBlockInfo};
@@ -57,7 +57,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
     let my_pubkey = Pubkey::new_rand();
     {
         let blocktree = Arc::new(
-            Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, _signal_receiver) =
             create_test_recorder(&bank, &blocktree);
@@ -81,7 +81,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    let _unused = Blocktree::destroy(&ledger_path);
+    let _unused = BlockBufferPool::destroy(&ledger_path);
 }
 
 #[bench]
@@ -153,7 +153,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     {
         let blocktree = Arc::new(
-            Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);
@@ -195,7 +195,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    let _unused = Blocktree::destroy(&ledger_path);
+    let _unused = BlockBufferPool::destroy(&ledger_path);
 }
 
 #[bench]
@@ -279,7 +279,7 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     {
         let blocktree = Arc::new(
-            Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, poh_recorder, poh_service, signal_receiver) =
             create_test_recorder(&bank, &blocktree);
@@ -318,5 +318,5 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    Blocktree::destroy(&ledger_path).unwrap();
+    BlockBufferPool::destroy(&ledger_path).unwrap();
 }

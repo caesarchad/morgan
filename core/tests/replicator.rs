@@ -5,7 +5,7 @@ extern crate log;
 extern crate morgan;
 
 use bincode::{deserialize, serialize};
-use morgan::block_buffer_pool::{create_new_tmp_ledger, Blocktree};
+use morgan::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
 use morgan::cluster_message::{ClusterInfo, Node, FULLNODE_PORT_RANGE};
 use morgan::connection_info::ContactInfo;
 use morgan::gossip_service::discover_cluster;
@@ -100,7 +100,7 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
                         module_path!().to_string()
                     )
                 );
-                let entries = Blocktree::deserialize_blob_data(&br.data()).unwrap();
+                let entries = BlockBufferPool::deserialize_blob_data(&br.data()).unwrap();
                 for entry in &entries {
                     // info!("{}", Info(format!("entry: {:?}", entry).to_string()));
                     println!("{}",
@@ -226,8 +226,8 @@ fn test_replicator_startup_leader_hang() {
         assert!(replicator_res.is_err());
     }
 
-    let _ignored = Blocktree::destroy(&leader_ledger_path);
-    let _ignored = Blocktree::destroy(&replicator_ledger_path);
+    let _ignored = BlockBufferPool::destroy(&leader_ledger_path);
+    let _ignored = BlockBufferPool::destroy(&replicator_ledger_path);
     let _ignored = remove_dir_all(&leader_ledger_path);
     let _ignored = remove_dir_all(&replicator_ledger_path);
 }

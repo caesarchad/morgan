@@ -16,7 +16,7 @@
 use crate::treasury_forks::BankForks;
 use crate::fetch_spot_stage::BlobFetchStage;
 use crate::block_stream_service::BlockstreamService;
-use crate::block_buffer_pool::{Blocktree, CompletedSlotsReceiver};
+use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
 use crate::cluster_message::ClusterInfo;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::water_clock_recorder::PohRecorder;
@@ -63,7 +63,7 @@ impl Tvu {
         bank_forks: &Arc<RwLock<BankForks>>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         sockets: Sockets,
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         storage_rotate_count: u64,
         storage_state: &StorageState,
         blockstream: Option<&String>,
@@ -260,7 +260,7 @@ pub mod tests {
 
         let blocktree_path = get_tmp_ledger_path!();
         let (blocktree, l_receiver, completed_slots_receiver) =
-            Blocktree::open_with_signal(&blocktree_path)
+            BlockBufferPool::open_with_signal(&blocktree_path)
                 .expect("Expected to successfully open ledger");
         let blocktree = Arc::new(blocktree);
         let bank = bank_forks.working_bank();

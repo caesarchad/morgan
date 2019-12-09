@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::{Blocktree, CompletedSlotsReceiver};
+use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
 use crate::block_buffer_pool_processor::{self, BankForksInfo};
 use crate::cluster_message::{ClusterInfo, Node};
 use crate::connection_info::ContactInfo;
@@ -335,7 +335,7 @@ pub fn new_banks_from_blocktree(
 ) -> (
     BankForks,
     Vec<BankForksInfo>,
-    Blocktree,
+    BlockBufferPool,
     Receiver<bool>,
     CompletedSlotsReceiver,
     LeaderScheduleCache,
@@ -345,7 +345,7 @@ pub fn new_banks_from_blocktree(
         GenesisBlock::load(blocktree_path).expect("Expected to successfully open genesis block");
 
     let (blocktree, ledger_signal_receiver, completed_slots_receiver) =
-        Blocktree::open_with_signal(blocktree_path)
+        BlockBufferPool::open_with_signal(blocktree_path)
             .expect("Expected to successfully open database ledger");
 
     let (bank_forks, bank_forks_info, leader_schedule_cache) =

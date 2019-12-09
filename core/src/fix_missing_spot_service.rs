@@ -3,7 +3,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::{Blocktree, CompletedSlotsReceiver, SlotMeta};
+use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver, SlotMeta};
 use crate::cluster_message::ClusterInfo;
 use crate::cluster_fix_message_listener::ClusterInfoRepairListener;
 use crate::result::Result;
@@ -64,7 +64,7 @@ pub struct RepairService {
 
 impl RepairService {
     pub fn new(
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         exit: Arc<AtomicBool>,
         repair_socket: Arc<UdpSocket>,
         cluster_info: Arc<RwLock<ClusterInfo>>,
@@ -103,7 +103,7 @@ impl RepairService {
     }
 
     fn run(
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         repair_socket: &Arc<UdpSocket>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
@@ -204,7 +204,7 @@ impl RepairService {
 
     // Generate repairs for all slots `x` in the repair_range.start <= x <= repair_range.end
     fn generate_repairs_in_range(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         max_repairs: usize,
         repair_range: &RepairSlotRange,
     ) -> Result<(Vec<RepairType>)> {
@@ -236,7 +236,7 @@ impl RepairService {
     }
 
     fn generate_repairs(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         root: u64,
         max_repairs: usize,
     ) -> Result<(Vec<RepairType>)> {
@@ -254,7 +254,7 @@ impl RepairService {
     }
 
     fn generate_repairs_for_slot(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         slot: u64,
         slot_meta: &SlotMeta,
         max_repairs: usize,
@@ -283,7 +283,7 @@ impl RepairService {
 
     /// Repairs any fork starting at the input slot
     fn generate_repairs_for_fork(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         repairs: &mut Vec<RepairType>,
         max_repairs: usize,
         slot: u64,
@@ -308,7 +308,7 @@ impl RepairService {
     }
 
     fn get_completed_slots_past_root(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         slots_in_gossip: &mut BTreeSet<u64>,
         root: u64,
         epoch_schedule: &EpochSchedule,
@@ -332,7 +332,7 @@ impl RepairService {
 
     fn initialize_epoch_slots(
         id: Pubkey,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         slots_in_gossip: &mut BTreeSet<u64>,
         root: u64,
         epoch_schedule: &EpochSchedule,
@@ -416,7 +416,7 @@ mod test {
     use crate::block_buffer_pool::tests::{
         make_chaining_slot_entries, make_many_slot_entries, make_slot_entries,
     };
-    use crate::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+    use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
     use crate::cluster_message::Node;
     use rand::seq::SliceRandom;
     use rand::{thread_rng, Rng};
@@ -428,7 +428,7 @@ mod test {
     pub fn test_repair_orphan() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             // Create some orphan slots
             let (mut blobs, _) = make_slot_entries(1, 0, 1);
@@ -445,14 +445,14 @@ mod test {
             );
         }
 
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_empty_slot() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             let (blobs, _) = make_slot_entries(2, 0, 1);
 
@@ -466,14 +466,14 @@ mod test {
                 vec![RepairType::HighestBlob(0, 0), RepairType::Orphan(0)]
             );
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_generate_repairs() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             let nth = 3;
             let num_entries_per_slot = 5 * nth;
@@ -510,14 +510,14 @@ mod test {
                 expected[0..expected.len() - 2]
             );
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_generate_highest_repair() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -537,14 +537,14 @@ mod test {
                 expected
             );
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_range() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             let slots: Vec<u64> = vec![1, 3, 5, 7, 8];
             let num_entries_per_slot = 10;
@@ -584,14 +584,14 @@ mod test {
                 }
             }
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_range_highest() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -627,14 +627,14 @@ mod test {
                 expected
             );
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_completed_slots_past_root() {
         let blocktree_path = get_tmp_ledger_path!();
         {
-            let blocktree = Blocktree::open(&blocktree_path).unwrap();
+            let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
             let num_entries_per_slot = 10;
             let root = 10;
 
@@ -690,7 +690,7 @@ mod test {
             expected.insert(last_slot);
             assert_eq!(full_slots, expected);
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -699,7 +699,7 @@ mod test {
         {
             // Create blocktree
             let (blocktree, _, completed_slots_receiver) =
-                Blocktree::open_with_signal(&blocktree_path).unwrap();
+                BlockBufferPool::open_with_signal(&blocktree_path).unwrap();
 
             let blocktree = Arc::new(blocktree);
 
@@ -770,7 +770,7 @@ mod test {
             assert_eq!(completed_slots, expected);
             writer.join().unwrap();
         }
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg, SubCommand};
-use morgan::block_buffer_pool::Blocktree;
+use morgan::block_buffer_pool::BlockBufferPool;
 use morgan::block_buffer_pool_processor::process_blocktree;
 use morgan_interface::genesis_block::GenesisBlock;
 use std::io::{stdout, Write};
@@ -55,7 +55,7 @@ fn main() {
         exit(1);
     });
 
-    let blocktree = match Blocktree::open(ledger_path) {
+    let blocktree = match BlockBufferPool::open(ledger_path) {
         Ok(blocktree) => blocktree,
         Err(err) => {
             eprintln!("Failed to open ledger at {}: {}", ledger_path, err);

@@ -1,7 +1,7 @@
 //! `window_service` handles the data plane incoming blobs, storing them in
 //!   blocktree and retransmitting where required
 //!
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::cluster_message::ClusterInfo;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::packet::{Blob, SharedBlob, BLOB_HEADER_SIZE};
@@ -47,7 +47,7 @@ fn retransmit_blobs(blobs: &[SharedBlob], retransmit: &BlobSender, id: &Pubkey) 
 }
 
 /// Process a blob: Add blob to the ledger window.
-fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<Blocktree>) -> Result<()> {
+fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<BlockBufferPool>) -> Result<()> {
     // make an iterator for insert_data_blobs()
     let blobs: Vec<_> = blobs.iter().map(move |blob| blob.read().unwrap()).collect();
 
@@ -105,7 +105,7 @@ pub fn should_retransmit_and_persist(
 }
 
 fn recv_window<F>(
-    blocktree: &Arc<Blocktree>,
+    blocktree: &Arc<BlockBufferPool>,
     my_pubkey: &Pubkey,
     r: &BlobReceiver,
     retransmit: &BlobSender,
@@ -169,7 +169,7 @@ pub struct WindowService {
 impl WindowService {
     #[allow(clippy::too_many_arguments)]
     pub fn new<F>(
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         cluster_info: Arc<RwLock<ClusterInfo>>,
         r: BlobReceiver,
         retransmit: BlobSender,
@@ -263,7 +263,7 @@ mod test {
     use super::*;
     // use crate::bank_forks::BankForks;
     use crate::treasury_forks::BankForks;
-    use crate::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+    use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
     use crate::cluster_message::{ClusterInfo, Node};
     use crate::entry_info::{make_consecutive_blobs, make_tiny_test_entries, EntrySlice};
     use crate::genesis_utils::create_genesis_block_with_leader;
@@ -282,7 +282,7 @@ mod test {
     #[test]
     fn test_process_blob() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = Arc::new(Blocktree::open(&blocktree_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open(&blocktree_path).unwrap());
         let num_entries = 10;
         let original_entries = make_tiny_test_entries(num_entries);
         let shared_blobs = original_entries.clone().to_shared_blobs();
@@ -299,7 +299,7 @@ mod test {
         );
 
         drop(blocktree);
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod test {
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
         let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = Blocktree::open_with_signal(&blocktree_path)
+        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_with_signal(&blocktree_path)
             .expect("Expected to be able to open database ledger");
         let blocktree = Arc::new(blocktree);
 
@@ -431,7 +431,7 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
         let _ignored = remove_dir_all(&blocktree_path);
     }
 
@@ -451,7 +451,7 @@ mod test {
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
         let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = Blocktree::open_with_signal(&blocktree_path)
+        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_with_signal(&blocktree_path)
             .expect("Expected to be able to open database ledger");
 
         let blocktree = Arc::new(blocktree);
@@ -506,7 +506,7 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
         let _ignored = remove_dir_all(&blocktree_path);
     }
 }

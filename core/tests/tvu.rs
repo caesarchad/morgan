@@ -3,7 +3,7 @@ extern crate morgan;
 
 use log::*;
 use morgan::treasury_stage::create_test_recorder;
-use morgan::block_buffer_pool::{create_new_tmp_ledger, Blocktree};
+use morgan::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
 use morgan::cluster_message::{ClusterInfo, Node};
 use morgan::entry_info::next_entry_mut;
 use morgan::entry_info::EntrySlice;
@@ -209,6 +209,6 @@ fn test_replay() {
         t_receiver.join().unwrap();
         t_responder.join().unwrap();
     }
-    Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+    BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     let _ignored = remove_dir_all(&blocktree_path);
 }

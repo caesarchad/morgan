@@ -2,18 +2,18 @@ use super::*;
 
 pub struct RootedSlotIterator<'a> {
     next_slots: Vec<u64>,
-    blocktree: &'a super::Blocktree,
+    blocktree: &'a super::BlockBufferPool,
 }
 
 impl<'a> RootedSlotIterator<'a> {
-    pub fn new(start_slot: u64, blocktree: &'a super::Blocktree) -> Result<Self> {
+    pub fn new(start_slot: u64, blocktree: &'a super::BlockBufferPool) -> Result<Self> {
         if blocktree.is_root(start_slot) {
             Ok(Self {
                 next_slots: vec![start_slot],
                 blocktree,
             })
         } else {
-            Err(Error::BlocktreeError(BlocktreeError::SlotNotRooted))
+            Err(Error::BlockBufferPoolError(BlockBufferPoolError::SlotNotRooted))
         }
     }
 }
@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn test_rooted_slot_iterator() {
         let blocktree_path = get_tmp_ledger_path("test_rooted_slot_iterator");
-        let blocktree = Blocktree::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
         blocktree.set_root(0, 0).unwrap();
         let ticks_per_slot = 5;
         /*
@@ -121,6 +121,6 @@ mod tests {
         assert_eq!(result, expected);
 
         drop(blocktree);
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 }

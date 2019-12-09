@@ -1,5 +1,5 @@
 use crate::fetch_spot_stage::BlobFetchStage;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 #[cfg(feature = "chacha")]
 use crate::chacha::{chacha_cbc_encrypt_ledger, CHACHA_BLOCK_SIZE};
 use crate::cluster_message::{ClusterInfo, Node};
@@ -64,7 +64,7 @@ pub struct Replicator {
     #[cfg(feature = "chacha")]
     num_chacha_blocks: usize,
     #[cfg(feature = "chacha")]
-    blocktree: Arc<Blocktree>,
+    blocktree: Arc<BlockBufferPool>,
 }
 
 pub(crate) fn sample_file(in_path: &Path, sample_offsets: &[u64]) -> io::Result<Hash> {
@@ -213,7 +213,7 @@ impl Replicator {
         let bank = Bank::new_with_paths(&genesis_block, None);
         let genesis_blockhash = bank.last_blockhash();
         let blocktree = Arc::new(
-            Blocktree::open(ledger_path).expect("Expected to be able to open database ledger"),
+            BlockBufferPool::open(ledger_path).expect("Expected to be able to open database ledger"),
         );
 
         let gossip_service = GossipService::new(
@@ -352,7 +352,7 @@ impl Replicator {
 
     fn wait_for_ledger_download(
         start_slot: u64,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         node_info: &ContactInfo,
         cluster_info: Arc<RwLock<ClusterInfo>>,

@@ -33,7 +33,7 @@ pub enum Error {
     ErasureError(reed_solomon_erasure::Error),
     SendError,
     PohRecorderError(water_clock_recorder::PohRecorderError),
-    BlocktreeError(block_buffer_pool::BlocktreeError),
+    BlockBufferPoolError(block_buffer_pool::BlockBufferPoolError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -209,9 +209,9 @@ impl std::convert::From<water_clock_recorder::PohRecorderError> for Error {
         Error::PohRecorderError(e)
     }
 }
-impl std::convert::From<block_buffer_pool::BlocktreeError> for Error {
-    fn from(e: block_buffer_pool::BlocktreeError) -> Error {
-        Error::BlocktreeError(e)
+impl std::convert::From<block_buffer_pool::BlockBufferPoolError> for Error {
+    fn from(e: block_buffer_pool::BlockBufferPoolError) -> Error {
+        Error::BlockBufferPoolError(e)
     }
 }
 

@@ -7,7 +7,7 @@ use crate::block_stream::BlockstreamEvents;
 use crate::block_stream::MockBlockstream as Blockstream;
 #[cfg(not(test))]
 use crate::block_stream::SocketBlockstream as Blockstream;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::result::{Error, Result};
 use crate::service::Service;
 use morgan_interface::pubkey::Pubkey;
@@ -71,7 +71,7 @@ impl BlockstreamService {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         slot_full_receiver: Receiver<(u64, Pubkey)>,
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         blockstream_socket: String,
         exit: &Arc<AtomicBool>,
     ) -> Self {
@@ -107,7 +107,7 @@ impl BlockstreamService {
     }
     fn process_entries(
         slot_full_receiver: &Receiver<(u64, Pubkey)>,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         blockstream: &mut Blockstream,
     ) -> Result<()> {
         let timeout = Duration::new(1, 0);
@@ -185,7 +185,7 @@ mod test {
         genesis_block.ticks_per_slot = ticks_per_slot;
 
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
-        let blocktree = Blocktree::open(&ledger_path).unwrap();
+        let blocktree = BlockBufferPool::open(&ledger_path).unwrap();
 
         // Set up blockstream
         let mut blockstream = Blockstream::new("test_stream".to_string());

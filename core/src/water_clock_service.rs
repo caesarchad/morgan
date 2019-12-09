@@ -114,7 +114,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+    use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
     use crate::leader_arrange_cache::LeaderScheduleCache;
     use crate::water_clock_recorder::WorkingBank;
@@ -133,7 +133,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let poh_config = Arc::new(PohConfig {
                 hashes_per_tick: Some(2),
                 target_tick_duration: Duration::from_millis(42),
@@ -225,6 +225,6 @@ mod tests {
             let _ = poh_service.join().unwrap();
             let _ = entry_producer.join().unwrap();
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 }

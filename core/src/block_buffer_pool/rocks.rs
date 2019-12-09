@@ -1,6 +1,6 @@
 use crate::block_buffer_pool::db::columns as cf;
 use crate::block_buffer_pool::db::{Backend, Column, DbCursor, IWriteBatch, TypedColumn};
-use crate::block_buffer_pool::BlocktreeError;
+use crate::block_buffer_pool::BlockBufferPoolError;
 use crate::result::{Error, Result};
 
 use byteorder::{BigEndian, ByteOrder};
@@ -281,7 +281,7 @@ impl IWriteBatch<Rocks> for RWriteBatch {
 
 impl std::convert::From<rocksdb::Error> for Error {
     fn from(e: rocksdb::Error) -> Error {
-        Error::BlocktreeError(BlocktreeError::RocksDb(e))
+        Error::BlockBufferPoolError(BlockBufferPoolError::RocksDb(e))
     }
 }
 

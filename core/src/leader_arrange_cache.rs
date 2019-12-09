@@ -1,4 +1,4 @@
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::leader_arrange::LeaderSchedule;
 use crate::leader_arrange_utils;
 use morgan_runtime::bank::Bank;
@@ -53,7 +53,7 @@ impl LeaderScheduleCache {
         pubkey: &Pubkey,
         mut current_slot: u64,
         bank: &Bank,
-        blocktree: Option<&Blocktree>,
+        blocktree: Option<&BlockBufferPool>,
     ) -> Option<u64> {
         let (mut epoch, mut start_index) = bank.get_epoch_and_slot_index(current_slot + 1);
         while let Some(leader_schedule) = self.get_epoch_schedule_else_compute(epoch, bank) {
@@ -316,7 +316,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
             );
 
             assert_eq!(
@@ -369,7 +369,7 @@ mod tests {
                 None
             );
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]

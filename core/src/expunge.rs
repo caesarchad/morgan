@@ -280,7 +280,7 @@ impl Default for CodingGenerator {
 pub mod test {
     use super::*;
     use crate::block_buffer_pool::get_tmp_ledger_path;
-    use crate::block_buffer_pool::Blocktree;
+    use crate::block_buffer_pool::BlockBufferPool;
     use crate::packet::{index_blobs, SharedBlob, BLOB_DATA_SIZE, BLOB_HEADER_SIZE};
     use morgan_interface::pubkey::Pubkey;
     use morgan_interface::signature::{Keypair, KeypairUtil};
@@ -542,7 +542,7 @@ pub mod test {
             }
 
             drop(blocktree);
-            Blocktree::destroy(&ledger_path).expect("Expect successful blocktree destruction");
+            BlockBufferPool::destroy(&ledger_path).expect("Expect successful blocktree destruction");
         }
     }
 
@@ -695,10 +695,10 @@ pub mod test {
     }
 
     /// Genarates a ledger according to the given specs.
-    /// Blocktree should have correct SlotMeta and ErasureMeta and so on but will not have done any
+    /// BlockBufferPool should have correct SlotMeta and ErasureMeta and so on but will not have done any
     /// possible recovery.
-    pub fn generate_blocktree_with_coding(ledger_path: &str, specs: &[SlotSpec]) -> Blocktree {
-        let blocktree = Blocktree::open(ledger_path).unwrap();
+    pub fn generate_blocktree_with_coding(ledger_path: &str, specs: &[SlotSpec]) -> BlockBufferPool {
+        let blocktree = BlockBufferPool::open(ledger_path).unwrap();
 
         let model = generate_ledger_model(specs);
         for slot_model in model {

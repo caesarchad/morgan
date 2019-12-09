@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::{Blocktree, CompletedSlotsReceiver};
+use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
 use crate::cluster_message::{compute_retransmit_peers, ClusterInfo, DATA_PLANE_FANOUT};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::fix_missing_spot_service::RepairStrategy;
@@ -175,7 +175,7 @@ impl RetransmitStage {
     pub fn new(
         bank_forks: Arc<RwLock<BankForks>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         retransmit_socket: Arc<UdpSocket>,
         repair_socket: Arc<UdpSocket>,

@@ -14,7 +14,7 @@
 //! Bank needs to provide an interface for us to query the stake weight
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::connection_info::ContactInfo;
 use crate::gossip::CrdsGossip;
 use crate::gossip_error_type::CrdsGossipError;
@@ -1065,7 +1065,7 @@ impl ClusterInfo {
     fn run_window_request(
         from: &ContactInfo,
         from_addr: &SocketAddr,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         me: &ContactInfo,
         slot: u64,
         blob_index: u64,
@@ -1096,7 +1096,7 @@ impl ClusterInfo {
 
     fn run_highest_window_request(
         from_addr: &SocketAddr,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         slot: u64,
         highest_index: u64,
     ) -> Vec<SharedBlob> {
@@ -1122,7 +1122,7 @@ impl ClusterInfo {
 
     fn run_orphan(
         from_addr: &SocketAddr,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         mut slot: u64,
         max_responses: usize,
     ) -> Vec<SharedBlob> {
@@ -1152,7 +1152,7 @@ impl ClusterInfo {
     //TODO we should first coalesce all the requests
     fn handle_blob(
         obj: &Arc<RwLock<Self>>,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         blob: &Blob,
     ) -> Vec<SharedBlob> {
         deserialize(&blob.data[..blob.meta.size])
@@ -1283,7 +1283,7 @@ impl ClusterInfo {
     fn handle_repair(
         me: &Arc<RwLock<Self>>,
         from_addr: &SocketAddr,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         request: Protocol,
     ) -> Vec<SharedBlob> {
         let now = Instant::now();
@@ -1366,7 +1366,7 @@ impl ClusterInfo {
     fn handle_protocol(
         me: &Arc<RwLock<Self>>,
         from_addr: &SocketAddr,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         request: Protocol,
     ) -> Vec<SharedBlob> {
         match request {
@@ -1432,7 +1432,7 @@ impl ClusterInfo {
     /// Process messages from the network
     fn run_listen(
         obj: &Arc<RwLock<Self>>,
-        blocktree: Option<&Arc<Blocktree>>,
+        blocktree: Option<&Arc<BlockBufferPool>>,
         requests_receiver: &BlobReceiver,
         response_sender: &BlobSender,
     ) -> Result<()> {
@@ -1452,7 +1452,7 @@ impl ClusterInfo {
     }
     pub fn listen(
         me: Arc<RwLock<Self>>,
-        blocktree: Option<Arc<Blocktree>>,
+        blocktree: Option<Arc<BlockBufferPool>>,
         requests_receiver: BlobReceiver,
         response_sender: BlobSender,
         exit: &Arc<AtomicBool>,
@@ -1756,7 +1756,7 @@ mod tests {
     use super::*;
     use crate::block_buffer_pool::get_tmp_ledger_path;
     use crate::block_buffer_pool::tests::make_many_slot_entries;
-    use crate::block_buffer_pool::Blocktree;
+    use crate::block_buffer_pool::BlockBufferPool;
     use crate::propagation_value::CrdsValueLabel;
     use crate::packet::BLOB_HEADER_SIZE;
     use crate::fix_missing_spot_service::RepairType;
@@ -1894,7 +1894,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
             let me = ContactInfo::new(
                 &Pubkey::new_rand(),
                 socketaddr!("127.0.0.1:1234"),
@@ -1944,7 +1944,7 @@ mod tests {
             assert_eq!(v.read().unwrap().meta.size, BLOB_HEADER_SIZE + data_size);
         }
 
-        Blocktree::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
     }
 
     /// test run_window_requestwindow requests respond with the right blob, and do not overrun
@@ -1953,7 +1953,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
             let rv =
                 ClusterInfo::run_highest_window_request(&socketaddr_any!(), Some(&blocktree), 0, 0);
             assert!(rv.is_empty());
@@ -1992,7 +1992,7 @@ mod tests {
             assert!(rv.is_empty());
         }
 
-        Blocktree::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -2000,7 +2000,7 @@ mod tests {
         morgan_logger::setup();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(Blocktree::open(&ledger_path).unwrap());
+            let blocktree = Arc::new(BlockBufferPool::open(&ledger_path).unwrap());
             let rv = ClusterInfo::run_orphan(&socketaddr_any!(), Some(&blocktree), 2, 0);
             assert!(rv.is_empty());
 
@@ -2028,7 +2028,7 @@ mod tests {
             assert_eq!(rv, expected)
         }
 
-        Blocktree::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]

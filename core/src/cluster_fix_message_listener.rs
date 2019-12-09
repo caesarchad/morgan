@@ -1,4 +1,4 @@
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::cluster_message::ClusterInfo;
 use crate::propagation_value::EpochSlots;
 use crate::result::Result;
@@ -78,7 +78,7 @@ pub struct ClusterInfoRepairListener {
 
 impl ClusterInfoRepairListener {
     pub fn new(
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         cluster_info: Arc<RwLock<ClusterInfo>>,
         epoch_schedule: EpochSchedule,
@@ -108,7 +108,7 @@ impl ClusterInfoRepairListener {
     }
 
     fn recv_loop(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         peer_roots: &mut HashMap<Pubkey, (u64, u64)>,
         exit: &Arc<AtomicBool>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
@@ -198,7 +198,7 @@ impl ClusterInfoRepairListener {
 
     fn serve_repairs(
         my_pubkey: &Pubkey,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         peer_roots: &HashMap<Pubkey, (u64, u64)>,
         repairees: &HashMap<Pubkey, EpochSlots>,
         socket: &UdpSocket,
@@ -253,7 +253,7 @@ impl ClusterInfoRepairListener {
     fn serve_repairs_to_repairee(
         my_pubkey: &Pubkey,
         my_root: u64,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         repairee_epoch_slots: &EpochSlots,
         eligible_repairmen: &[&Pubkey],
         socket: &UdpSocket,
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_serve_repairs_to_repairee() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = Blocktree::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
         let blobs_per_slot = 5;
         let num_slots = 10;
         assert_eq!(num_slots % 2, 0);
@@ -687,13 +687,13 @@ mod tests {
         // Shutdown
         mock_repairee.close().unwrap();
         drop(blocktree);
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_no_repair_past_confirmed_epoch() {
         let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = Blocktree::open(&blocktree_path).unwrap();
+        let blocktree = BlockBufferPool::open(&blocktree_path).unwrap();
         let stakers_slot_offset = 16;
         let slots_per_epoch = stakers_slot_offset * 2;
         let epoch_schedule = EpochSchedule::new(slots_per_epoch, stakers_slot_offset, false);
@@ -766,7 +766,7 @@ mod tests {
         // Shutdown
         mock_repairee.close().unwrap();
         drop(blocktree);
-        Blocktree::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]

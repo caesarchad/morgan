@@ -10,7 +10,7 @@
 //! For Entries:
 //! * recorded entry must be >= WorkingBank::min_tick_height && entry must be < WorkingBank::max_tick_height
 //!
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::entry_info::Entry;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::leader_arrange_utils;
@@ -58,7 +58,7 @@ pub struct PohRecorder {
     last_leader_tick: Option<u64>,
     max_last_leader_grace_ticks: u64,
     id: Pubkey,
-    blocktree: Arc<Blocktree>,
+    blocktree: Arc<BlockBufferPool>,
     leader_schedule_cache: Arc<LeaderScheduleCache>,
     poh_config: Arc<PohConfig>,
     ticks_per_slot: u64,
@@ -397,7 +397,7 @@ impl PohRecorder {
         my_leader_slot_index: Option<u64>,
         ticks_per_slot: u64,
         id: &Pubkey,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         clear_bank_signal: Option<SyncSender<bool>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         poh_config: &Arc<PohConfig>,
@@ -446,7 +446,7 @@ impl PohRecorder {
         my_leader_slot_index: Option<u64>,
         ticks_per_slot: u64,
         id: &Pubkey,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         poh_config: &Arc<PohConfig>,
     ) -> (Self, Receiver<WorkingBankEntries>) {
@@ -468,7 +468,7 @@ impl PohRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+    use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
     use crate::test_tx::test_tx;
     use morgan_interface::hash::hash;
@@ -481,7 +481,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
 
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
@@ -499,7 +499,7 @@ mod tests {
             assert_eq!(poh_recorder.tick_cache[0].1, 1);
             assert_eq!(poh_recorder.tick_height, 1);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -508,7 +508,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
 
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
@@ -527,7 +527,7 @@ mod tests {
             assert_eq!(poh_recorder.tick_cache[1].1, 2);
             assert_eq!(poh_recorder.tick_height, 2);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -535,7 +535,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
                 Hash::default(),
@@ -552,7 +552,7 @@ mod tests {
             poh_recorder.reset(0, Hash::default(), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -560,7 +560,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -586,7 +586,7 @@ mod tests {
             poh_recorder.clear_bank();
             assert!(poh_recorder.working_bank.is_none());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -594,7 +594,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -632,7 +632,7 @@ mod tests {
             assert_eq!(bank_.slot(), bank.slot());
             assert!(poh_recorder.working_bank.is_none());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -640,7 +640,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -676,7 +676,7 @@ mod tests {
             let (_, e) = entry_receiver.recv().expect("recv 1");
             assert_eq!(e.len(), 3);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -684,7 +684,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -714,7 +714,7 @@ mod tests {
                 .is_err());
             assert!(entry_receiver.try_recv().is_err());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -722,7 +722,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -754,7 +754,7 @@ mod tests {
                 Err(Error::PohRecorderError(PohRecorderError::MaxHeightReached))
             );
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -762,7 +762,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -801,7 +801,7 @@ mod tests {
             let (_b, e) = entry_receiver.recv().expect("recv 2");
             assert!(!e[0].0.is_tick());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -809,7 +809,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -845,7 +845,7 @@ mod tests {
             assert!(e[0].0.is_tick());
             assert!(e[1].0.is_tick());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -853,7 +853,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -883,7 +883,7 @@ mod tests {
             assert!(poh_recorder.working_bank.is_none());
             assert_eq!(poh_recorder.tick_cache.len(), 3);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -891,7 +891,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
                 Hash::default(),
@@ -916,7 +916,7 @@ mod tests {
             );
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -924,7 +924,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
                 Hash::default(),
@@ -948,7 +948,7 @@ mod tests {
             );
             assert_eq!(poh_recorder.tick_cache.len(), 0);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -956,7 +956,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
                 0,
                 Hash::default(),
@@ -978,7 +978,7 @@ mod tests {
             poh_recorder.tick();
             assert_eq!(poh_recorder.tick_height, 2);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -986,7 +986,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let (mut poh_recorder, _entry_receiver) = PohRecorder::new(
@@ -1010,7 +1010,7 @@ mod tests {
             poh_recorder.reset(1, hash(b"hello"), 0, Some(4), ticks_per_slot);
             assert!(poh_recorder.working_bank.is_none());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1018,7 +1018,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let (sender, receiver) = sync_channel(1);
@@ -1038,7 +1038,7 @@ mod tests {
             poh_recorder.clear_bank();
             assert!(receiver.try_recv().is_ok());
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1046,7 +1046,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let ticks_per_slot = 5;
             let GenesisBlockInfo {
                 mut genesis_block, ..
@@ -1089,7 +1089,7 @@ mod tests {
             // Make sure the starting slot is updated
             assert_eq!(poh_recorder.start_slot(), end_slot);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1097,7 +1097,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();
@@ -1251,7 +1251,7 @@ mod tests {
             // We are not the leader, as expected
             assert_eq!(poh_recorder.reached_leader_tick().0, false);
         }
-        Blocktree::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destroy(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1259,7 +1259,7 @@ mod tests {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree =
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger");
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
             let prev_hash = bank.last_blockhash();

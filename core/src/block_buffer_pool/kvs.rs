@@ -1,6 +1,6 @@
 use crate::block_buffer_pool::db::columns as cf;
 use crate::block_buffer_pool::db::{Backend, Column, DbCursor, IWriteBatch, TypedColumn};
-use crate::block_buffer_pool::BlocktreeError;
+use crate::block_buffer_pool::BlockBufferPoolError;
 use crate::result::{Error, Result};
 use byteorder::{BigEndian, ByteOrder};
 use morgan_kvstore::{self as kvstore, Key, KvStore};
@@ -240,6 +240,6 @@ impl Iterator for Dummy {
 
 impl std::convert::From<kvstore::Error> for Error {
     fn from(e: kvstore::Error) -> Error {
-        Error::BlocktreeError(BlocktreeError::KvsDb(e))
+        Error::BlockBufferPoolError(BlockBufferPoolError::KvsDb(e))
     }
 }

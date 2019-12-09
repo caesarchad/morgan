@@ -2,7 +2,7 @@
 //! multi-stage transaction processing pipeline in software.
 
 use crate::treasury_stage::BankingStage;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::propagate_stage::BroadcastStage;
 use crate::cluster_message::ClusterInfo;
 use crate::cluster_vote_message_listener::ClusterInfoVoteListener;
@@ -37,7 +37,7 @@ impl Tpu {
         tpu_via_blobs_sockets: Vec<UdpSocket>,
         broadcast_socket: UdpSocket,
         sigverify_disabled: bool,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         genesis_blockhash: &Hash,
     ) -> Self {

@@ -1,6 +1,6 @@
 //! A stage to broadcast data from a leader node to validators
 //!
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::cluster_message::{ClusterInfo, ClusterInfoError, DATA_PLANE_FANOUT};
 use crate::entry_info::EntrySlice;
 use crate::expunge::CodingGenerator;
@@ -49,7 +49,7 @@ impl Broadcast {
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         receiver: &Receiver<WorkingBankEntries>,
         sock: &UdpSocket,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> Result<()> {
         let timer = Duration::new(1, 0);
@@ -218,7 +218,7 @@ impl BroadcastStage {
         sock: &UdpSocket,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
         receiver: &Receiver<WorkingBankEntries>,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> BroadcastStageReturnType {
         let me = cluster_info.read().unwrap().my_data().clone();
@@ -277,7 +277,7 @@ impl BroadcastStage {
         cluster_info: Arc<RwLock<ClusterInfo>>,
         receiver: Receiver<WorkingBankEntries>,
         exit_sender: &Arc<AtomicBool>,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> Self {
         let blocktree = blocktree.clone();
@@ -312,7 +312,7 @@ impl Service for BroadcastStage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::block_buffer_pool::{get_tmp_ledger_path, Blocktree};
+    use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
     use crate::cluster_message::{ClusterInfo, Node};
     use crate::entry_info::create_ticks;
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
@@ -327,7 +327,7 @@ mod test {
     use std::time::Duration;
 
     struct MockBroadcastStage {
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         broadcast_service: BroadcastStage,
         bank: Arc<Bank>,
     }
@@ -338,7 +338,7 @@ mod test {
         entry_receiver: Receiver<WorkingBankEntries>,
     ) -> MockBroadcastStage {
         // Make the database ledger
-        let blocktree = Arc::new(Blocktree::open(ledger_path).unwrap());
+        let blocktree = Arc::new(BlockBufferPool::open(ledger_path).unwrap());
 
         // Make the leader node and scheduler
         let leader_info = Node::new_localhost_with_pubkey(leader_pubkey);
@@ -428,6 +428,6 @@ mod test {
                 .expect("Expect successful join of broadcast service");
         }
 
-        Blocktree::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
     }
 }

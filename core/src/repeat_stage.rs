@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::block_buffer_pool_processor;
 use crate::cluster_message::ClusterInfo;
 use crate::entry_info::{Entry, EntrySlice};
@@ -78,7 +78,7 @@ impl ReplayStage {
         my_pubkey: &Pubkey,
         vote_account: &Pubkey,
         voting_keypair: Option<&Arc<T>>,
-        blocktree: Arc<Blocktree>,
+        blocktree: Arc<BlockBufferPool>,
         bank_forks: &Arc<RwLock<BankForks>>,
         cluster_info: Arc<RwLock<ClusterInfo>>,
         exit: &Arc<AtomicBool>,
@@ -279,7 +279,7 @@ impl ReplayStage {
     }
     fn replay_blocktree_into_bank(
         bank: &Bank,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         progress: &mut HashMap<u64, ForkProgress>,
     ) -> Result<()> {
         let (entries, num) = Self::load_blocktree_entries(bank, blocktree, progress)?;
@@ -311,7 +311,7 @@ impl ReplayStage {
         vote_account: &Pubkey,
         voting_keypair: &Option<Arc<T>>,
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         root_slot_sender: &Sender<Vec<u64>>,
     ) -> Result<()>
@@ -367,7 +367,7 @@ impl ReplayStage {
 
     fn reset_poh_recorder(
         my_pubkey: &Pubkey,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         bank: &Arc<Bank>,
         poh_recorder: &Arc<Mutex<PohRecorder>>,
         ticks_per_slot: u64,
@@ -391,7 +391,7 @@ impl ReplayStage {
     }
 
     fn replay_active_banks(
-        blocktree: &Arc<Blocktree>,
+        blocktree: &Arc<BlockBufferPool>,
         bank_forks: &Arc<RwLock<BankForks>>,
         my_pubkey: &Pubkey,
         ticks_per_slot: &mut u64,
@@ -547,7 +547,7 @@ impl ReplayStage {
 
     fn load_blocktree_entries(
         bank: &Bank,
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         progress: &mut HashMap<u64, ForkProgress>,
     ) -> Result<(Vec<Entry>, usize)> {
         let bank_slot = bank.slot();
@@ -621,7 +621,7 @@ impl ReplayStage {
     }
 
     fn generate_new_bank_forks(
-        blocktree: &Blocktree,
+        blocktree: &BlockBufferPool,
         forks: &mut BankForks,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) {
@@ -684,7 +684,7 @@ mod test {
         let ledger_path = get_tmp_ledger_path!();
         {
             let blocktree = Arc::new(
-                Blocktree::open(&ledger_path).expect("Expected to be able to open database ledger"),
+                BlockBufferPool::open(&ledger_path).expect("Expected to be able to open database ledger"),
             );
 
             let genesis_block = create_genesis_block(10_000).genesis_block;

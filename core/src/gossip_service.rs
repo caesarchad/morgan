@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::block_buffer_pool::Blocktree;
+use crate::block_buffer_pool::BlockBufferPool;
 use crate::cluster_message::ClusterInfo;
 use crate::cluster_message::FULLNODE_PORT_RANGE;
 use crate::connection_info::ContactInfo;
@@ -34,7 +34,7 @@ pub struct GossipService {
 impl GossipService {
     pub fn new(
         cluster_info: &Arc<RwLock<ClusterInfo>>,
-        blocktree: Option<Arc<Blocktree>>,
+        blocktree: Option<Arc<BlockBufferPool>>,
         bank_forks: Option<Arc<RwLock<BankForks>>>,
         gossip_socket: UdpSocket,
         exit: &Arc<AtomicBool>,
