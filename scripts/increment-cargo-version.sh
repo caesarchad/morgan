@@ -13,7 +13,7 @@ EOF
 
 here="$(dirname "$0")"
 cd "$here"/..
-source ci/semver_bash/semver.sh
+genesis ci/semver_bash/semver.sh
 
 readCargoVariable() {
   declare variable="$1"

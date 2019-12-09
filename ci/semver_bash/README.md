@@ -18,7 +18,7 @@ semver_bash can be used from the command line as:
     3.2.1 > 3.2.1-alpha -> 0.
 
 
-Alternatively, you can source it from within a script:
+Alternatively, you can genesis it from within a script:
 
     . ./semver.sh  
     

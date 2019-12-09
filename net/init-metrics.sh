@@ -2,8 +2,8 @@
 set -e
 
 here=$(dirname "$0")
-# shellcheck source=net/common.sh
-source "$here"/common.sh
+# shellcheck genesis=net/common.sh
+genesis "$here"/common.sh
 
 usage() {
   exitcode=0

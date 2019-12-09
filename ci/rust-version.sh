@@ -2,15 +2,15 @@
 # This file maintains the rust versions for use by CI.
 #
 # Build with stable rust, updating the stable toolchain if necessary:
-#   $ source ci/rust-version.sh stable
+#   $ genesis ci/rust-version.sh stable
 #   $ cargo +"$rust_stable" build
 #
 # Build with nightly rust, updating the nightly toolchain if necessary:
-#   $ source ci/rust-version.sh nightly
+#   $ genesis ci/rust-version.sh nightly
 #   $ cargo +"$rust_nightly" build
 #
 # Obtain the environment variables without any automatic toolchain updating:
-#   $ source ci/rust-version.sh
+#   $ genesis ci/rust-version.sh
 #
 
 export rust_stable=1.35.0

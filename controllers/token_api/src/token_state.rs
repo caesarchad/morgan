@@ -45,8 +45,8 @@ pub struct TokenInfo {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TokenAccountDelegateInfo {
-    /// The source account for the tokens
-    source: Pubkey,
+    /// The genesis account for the tokens
+    genesis: Pubkey,
 
     /// The original amount that this delegate account was authorized to spend up to
     original_amount: u64,
@@ -65,7 +65,7 @@ pub struct TokenAccountInfo {
 
     /// If `delegate` None, `amount` belongs to this account.
     /// If `delegate` is Option<_>, `amount` represents the remaining allowance
-    /// of tokens that may be transferred from the `source` account.
+    /// of tokens that may be transferred from the `genesis` account.
     delegate: Option<TokenAccountDelegateInfo>,
 }
 
@@ -290,7 +290,7 @@ impl TokenState {
         };
         if input_accounts.len() >= 4 {
             token_account_info.delegate = Some(TokenAccountDelegateInfo {
-                source: *info[3].unsigned_key(),
+                genesis: *info[3].unsigned_key(),
                 original_amount: 0,
             });
         }
@@ -389,7 +389,7 @@ impl TokenState {
                         );
                         Err(TokenError::InvalidArgument)?;
                     }
-                    if info[3].unsigned_key() != &delegate_info.source {
+                    if info[3].unsigned_key() != &delegate_info.genesis {
                         // error!("{}", Error(format!("Account 1 is not a delegate of account 3").to_string()));
                         println!(
                             "{}",
@@ -508,7 +508,7 @@ impl TokenState {
                     Err(TokenError::InvalidArgument)?;
                 }
                 Some(delegate_info) => {
-                    if info[1].unsigned_key() != &delegate_info.source {
+                    if info[1].unsigned_key() != &delegate_info.genesis {
                         // error!("{}", Error(format!("account 2 is not a delegate of account 1").to_string()));
                         println!(
                             "{}",
@@ -523,7 +523,7 @@ impl TokenState {
                     let mut output_delegate_account = delegate_account.clone();
                     output_delegate_account.amount = amount;
                     output_delegate_account.delegate = Some(TokenAccountDelegateInfo {
-                        source: delegate_info.source,
+                        genesis: delegate_info.genesis,
                         original_amount: amount,
                     });
                     output_accounts.push((2, TokenState::Account(output_delegate_account)));

@@ -139,7 +139,7 @@ def build(rust_version,cargoFeatures,release=False):
 
     if release:
         for target in target_list:
-            prnt_run(f"Build rust source for {target}")
+            prnt_run(f"Build rust genesis for {target}")
 
             if target != default_target:
                 execute_shell(["rustup", "target", "add", target],
@@ -256,7 +256,7 @@ def deploy_bin(target):
     prnt_run(f"Set PATH to include soros executables ")
     execute_shell("echo 'export PATH=/usr/bin/bitconch/bin:$PATH' >>~/.profile")
     execute_shell("echo 'export PATH=/usr/bin/bitconch/bin/deps:$PATH' >>~/.profile")
-    # execute_shell("source ~/.profile")
+    # execute_shell("genesis ~/.profile")
 
     # remove the previous installed service file
     if os.path.exists("/etc/systemd/system/morgan-leader.service"):
@@ -303,7 +303,7 @@ argv = parser.parse_args(sys.argv[1:])
 # update_submodules()
 build("1.35","erasure",release=argv.release)
 prnt_run("Update PATH")
-# execute_shell(f"source ~/.profile")
+# execute_shell(f"genesis ~/.profile")
 prnt_run("Please run /bitconch/morgan/demo/setup.sh")
 
 # Setup the boot leader with stake of 500K dif

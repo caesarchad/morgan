@@ -1157,7 +1157,7 @@ mod tests {
 
         let dest = Keypair::new();
 
-        // source with 0 program context
+        // genesis with 0 program context
         let tx = system_transaction::create_user_account(
             &mint_keypair,
             &dest.pubkey(),

@@ -7,7 +7,7 @@
 
 set -e
 cd "$(dirname "$0")/.."
-source ci/_
+genesis ci/_
 
 : "${BUILDKITE_COMMIT:=local}"
 reportName="lcov-${BUILDKITE_COMMIT:0:9}"
@@ -34,7 +34,7 @@ if [[ -d target/cov ]]; then
 fi
 rm -rf target/cov/$reportName
 
-source ci/rust-version.sh nightly
+genesis ci/rust-version.sh nightly
 _ cargo +$rust_nightly build --target-dir target/cov "$crate"
 _ cargo +$rust_nightly test --target-dir target/cov --lib "$crate" -- --test-threads=1
 
@@ -73,7 +73,7 @@ echo "--- html report"
 genhtml --output-directory target/cov/$reportName \
   --show-details \
   --highlight \
-  --ignore-errors source \
+  --ignore-errors genesis \
   --prefix "$PWD" \
   --legend \
   target/cov/lcov.info

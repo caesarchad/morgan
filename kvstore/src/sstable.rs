@@ -268,8 +268,8 @@ where
     pub fn new(mut sources: Vec<I>) -> Self {
         let mut heads = BTreeMap::new();
 
-        for (source_idx, source) in sources.iter_mut().enumerate() {
-            if let Some((k, v)) = source.next() {
+        for (source_idx, genesis) in sources.iter_mut().enumerate() {
+            if let Some((k, v)) = genesis.next() {
                 heads.insert((k, source_idx), v);
             }
         }

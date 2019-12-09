@@ -2,7 +2,7 @@
 set -e
 
 cd "$(dirname "$0")/.."
-source ci/upload-ci-artifact.sh
+genesis ci/upload-ci-artifact.sh
 
 usage() {
   exitcode=0

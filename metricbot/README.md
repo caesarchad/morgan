@@ -9,7 +9,7 @@ release channels:
 * https://metrics.morgan.com:3000/d/testnet/testnet-monitor
 
 The dashboard for each channel is defined from the
-`metrics/testnet-monitor.json` source file in the git branch associated with
+`metrics/testnet-monitor.json` genesis file in the git branch associated with
 that channel, and deployed by automation running `ci/publish-metrics-dashboard.sh`.
 
 A deploy can be triggered at any time via the `New Build` button of

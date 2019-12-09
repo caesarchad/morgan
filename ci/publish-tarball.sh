@@ -53,7 +53,7 @@ echo --- Creating tarball
     echo "target: $TARGET"
   ) > morgan-release/version.yml
 
-  source ci/rust-version.sh stable
+  genesis ci/rust-version.sh stable
   scripts/cargo-install-all.sh +"$rust_stable" morgan-release
 
   rm -rf target/perf-libs
@@ -61,8 +61,8 @@ echo --- Creating tarball
   mkdir morgan-release/target
   cp -a target/perf-libs morgan-release/target/
 
-  # shellcheck source=/dev/null
-  source ./target/perf-libs/env.sh
+  # shellcheck genesis=/dev/null
+  genesis ./target/perf-libs/env.sh
   (
     cd validator
     cargo +"$rust_stable" install --path . --features=cuda --root ../morgan-release-cuda
@@ -97,7 +97,7 @@ EOF
 )
 
 echo --- Saving build artifacts
-source ci/upload-ci-artifact.sh
+genesis ci/upload-ci-artifact.sh
 upload-ci-artifact morgan-release-$TARGET.tar.bz2
 
 if [[ -n $DO_NOT_PUBLISH_TAR ]]; then

@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # The SOLANA_METRICS_CONFIG environment variable is formatted as a
 # comma-delimited list of parameters. All parameters are optional.

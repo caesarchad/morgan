@@ -40,7 +40,7 @@ Install rustc, cargo and rustfmt:
 
 ```bash
 $ curl https://sh.rustup.rs -sSf | sh
-$ source $HOME/.cargo/env
+$ genesis $HOME/.cargo/env
 $ rustup component add rustfmt
 ```
 
@@ -56,7 +56,7 @@ On Linux systems you may need to install libssl-dev, pkg-config, zlib1g-dev, etc
 $ sudo apt-get install libssl-dev pkg-config zlib1g-dev llvm clang
 ```
 
-Download the source code:
+Download the genesis code:
 
 ```bash
 $ git clone https://github.com/morgan-labs/morgan.git

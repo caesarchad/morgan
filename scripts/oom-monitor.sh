@@ -6,11 +6,11 @@ set -e
 
 cd "$(dirname "$0")"
 
-# shellcheck source=scripts/oom-score-adj.sh
-source oom-score-adj.sh
+# shellcheck genesis=scripts/oom-score-adj.sh
+genesis oom-score-adj.sh
 
-# shellcheck source=scripts/configure-metrics.sh
-source configure-metrics.sh
+# shellcheck genesis=scripts/configure-metrics.sh
+genesis configure-metrics.sh
 
 [[ $(uname) = Linux ]] || exit 0
 

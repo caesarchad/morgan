@@ -216,7 +216,7 @@ impl RepairService {
             }
 
             let meta = blocktree
-                .meta(slot)
+                .meta_info(slot)
                 .expect("Unable to lookup slot meta")
                 .unwrap_or(SlotMeta {
                     slot,
@@ -247,7 +247,7 @@ impl RepairService {
         // TODO: Incorporate gossip to determine priorities for repair?
 
         // Try to resolve orphans in blocktree
-        let orphans = blocktree.get_orphans(Some(MAX_ORPHANS));
+        let orphans = blocktree.fetch_tramps(Some(MAX_ORPHANS));
 
         Self::generate_repairs_for_orphans(&orphans[..], &mut repairs);
         Ok(repairs)
@@ -264,7 +264,7 @@ impl RepairService {
         } else if slot_meta.consumed == slot_meta.received {
             vec![RepairType::HighestBlob(slot, slot_meta.received)]
         } else {
-            let reqs = blocktree.find_missing_data_indexes(
+            let reqs = blocktree.search_absent_info_indices(
                 slot,
                 slot_meta.consumed,
                 slot_meta.received,
@@ -291,7 +291,7 @@ impl RepairService {
         let mut pending_slots = vec![slot];
         while repairs.len() < max_repairs && !pending_slots.is_empty() {
             let slot = pending_slots.pop().unwrap();
-            if let Some(slot_meta) = blocktree.meta(slot).unwrap() {
+            if let Some(slot_meta) = blocktree.meta_info(slot).unwrap() {
                 let new_repairs = Self::generate_repairs_for_slot(
                     blocktree,
                     slot,
@@ -317,7 +317,7 @@ impl RepairService {
         let last_epoch_slot = epoch_schedule.get_last_slot_in_epoch(last_confirmed_epoch);
 
         let meta_iter = blocktree
-            .slot_meta_iterator(root + 1)
+            .slit_meta_repeater(root + 1)
             .expect("Couldn't get db iterator");
 
         for (current_slot, meta) in meta_iter {
@@ -434,7 +434,7 @@ mod test {
             let (mut blobs, _) = make_slot_entries(1, 0, 1);
             let (blobs2, _) = make_slot_entries(5, 2, 1);
             blobs.extend(blobs2);
-            blocktree.write_blobs(&blobs).unwrap();
+            blocktree.record_objs(&blobs).unwrap();
             assert_eq!(
                 RepairService::generate_repairs(&blocktree, 0, 2).unwrap(),
                 vec![
@@ -445,7 +445,7 @@ mod test {
             );
         }
 
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -458,7 +458,7 @@ mod test {
 
             // Write this blob to slot 2, should chain to slot 0, which we haven't received
             // any blobs for
-            blocktree.write_blobs(&blobs).unwrap();
+            blocktree.record_objs(&blobs).unwrap();
 
             // Check that repair tries to patch the empty slot
             assert_eq!(
@@ -466,7 +466,7 @@ mod test {
                 vec![RepairType::HighestBlob(0, 0), RepairType::Orphan(0)]
             );
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod test {
             // write every nth blob
             let blobs_to_write: Vec<_> = blobs.iter().step_by(nth as usize).collect();
 
-            blocktree.write_blobs(blobs_to_write).unwrap();
+            blocktree.record_objs(blobs_to_write).unwrap();
 
             let missing_indexes_per_slot: Vec<u64> = (0..num_entries_per_slot / nth - 1)
                 .flat_map(|x| ((nth * x + 1) as u64..(nth * x + nth) as u64))
@@ -510,7 +510,7 @@ mod test {
                 expected[0..expected.len() - 2]
             );
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -527,7 +527,7 @@ mod test {
             // Remove is_last flag on last blob
             blobs.last_mut().unwrap().set_flags(0);
 
-            blocktree.write_blobs(&blobs).unwrap();
+            blocktree.record_objs(&blobs).unwrap();
 
             // We didn't get the last blob for this slot, so ask for the highest blob for that slot
             let expected: Vec<RepairType> = vec![RepairType::HighestBlob(0, num_entries_per_slot)];
@@ -537,7 +537,7 @@ mod test {
                 expected
             );
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -551,7 +551,7 @@ mod test {
 
             let blobs = make_chaining_slot_entries(&slots, num_entries_per_slot);
             for (slot_blobs, _) in blobs.iter() {
-                blocktree.write_blobs(&slot_blobs[1..]).unwrap();
+                blocktree.record_objs(&slot_blobs[1..]).unwrap();
             }
 
             // Iterate through all possible combinations of start..end (inclusive on both
@@ -584,7 +584,7 @@ mod test {
                 }
             }
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -603,7 +603,7 @@ mod test {
                 let parent = if i > 0 { i - 1 } else { 0 };
                 let (blobs, _) = make_slot_entries(i, parent, num_entries_per_slot as u64);
 
-                blocktree.write_blobs(&blobs).unwrap();
+                blocktree.record_objs(&blobs).unwrap();
             }
 
             let end = 4;
@@ -627,7 +627,7 @@ mod test {
                 expected
             );
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -656,8 +656,8 @@ mod test {
                 .collect();
             let mut full_slots = BTreeSet::new();
 
-            blocktree.write_blobs(&fork1_blobs).unwrap();
-            blocktree.write_blobs(&fork2_incomplete_blobs).unwrap();
+            blocktree.record_objs(&fork1_blobs).unwrap();
+            blocktree.record_objs(&fork2_incomplete_blobs).unwrap();
 
             // Test that only slots > root from fork1 were included
             let epoch_schedule = EpochSchedule::new(32, 32, false);
@@ -680,7 +680,7 @@ mod test {
                 .into_iter()
                 .flat_map(|(blobs, _)| blobs)
                 .collect();
-            blocktree.write_blobs(&fork3_blobs).unwrap();
+            blocktree.record_objs(&fork3_blobs).unwrap();
             RepairService::get_completed_slots_past_root(
                 &blocktree,
                 &mut full_slots,
@@ -690,7 +690,7 @@ mod test {
             expected.insert(last_slot);
             assert_eq!(full_slots, expected);
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -699,7 +699,7 @@ mod test {
         {
             // Create blocktree
             let (blocktree, _, completed_slots_receiver) =
-                BlockBufferPool::open_with_signal(&blocktree_path).unwrap();
+                BlockBufferPool::open_by_message(&blocktree_path).unwrap();
 
             let blocktree = Arc::new(blocktree);
 
@@ -725,7 +725,7 @@ mod test {
                     while i < blobs.len() as usize {
                         let step = rng.gen_range(1, max_step + 1);
                         blocktree_
-                            .insert_data_blobs(&blobs[i..min(i + max_step as usize, blobs.len())])
+                            .punctuate_info_objs(&blobs[i..min(i + max_step as usize, blobs.len())])
                             .unwrap();
                         sleep(Duration::from_millis(repair_interval_ms));
                         i += step as usize;
@@ -756,7 +756,7 @@ mod test {
             // Update with new root, should filter out the slots <= root
             root = num_slots / 2;
             let (blobs, _) = make_slot_entries(num_slots + 2, num_slots + 1, entries_per_slot);
-            blocktree.insert_data_blobs(&blobs).unwrap();
+            blocktree.punctuate_info_objs(&blobs).unwrap();
             RepairService::update_epoch_slots(
                 Pubkey::default(),
                 root,
@@ -770,7 +770,7 @@ mod test {
             assert_eq!(completed_slots, expected);
             writer.join().unwrap();
         }
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]

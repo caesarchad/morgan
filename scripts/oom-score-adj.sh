@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # Adjusts the OOM score for the specified process.  Linux only
 #

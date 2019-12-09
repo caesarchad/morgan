@@ -86,7 +86,7 @@ impl Session {
 
     /// Recover data + coding blocks into data blocks
     /// # Arguments
-    /// * `data` - array of data blocks to recover into
+    /// * `data` - array of data blocks to restore into
     /// * `coding` - array of coding blocks
     /// * `erasures` - list of indices in data where blocks should be recovered
     pub fn decode_blocks(&self, blocks: &mut [&mut [u8]], present: &[bool]) -> Result<()> {
@@ -530,19 +530,19 @@ pub mod test {
                     );
 
                     for idx in start_index..data_end {
-                        let opt_bytes = blocktree.get_data_blob_bytes(slot, idx).unwrap();
+                        let opt_bytes = blocktree.fetch_info_obj_bytes(slot, idx).unwrap();
                         assert!(opt_bytes.is_some());
                     }
 
                     for idx in start_index..coding_end {
-                        let opt_bytes = blocktree.get_coding_blob_bytes(slot, idx).unwrap();
+                        let opt_bytes = blocktree.fetch_encrypting_obj_bytes(slot, idx).unwrap();
                         assert!(opt_bytes.is_some());
                     }
                 }
             }
 
             drop(blocktree);
-            BlockBufferPool::destroy(&ledger_path).expect("Expect successful blocktree destruction");
+            BlockBufferPool::destruct(&ledger_path).expect("Expect successful blocktree destruction");
         }
     }
 
@@ -705,12 +705,12 @@ pub mod test {
             let slot = slot_model.slot;
 
             for erasure_set in slot_model.chunks {
-                blocktree.write_shared_blobs(erasure_set.data).unwrap();
+                blocktree.record_public_objs(erasure_set.data).unwrap();
 
                 for shared_coding_blob in erasure_set.coding.into_iter() {
                     let blob = shared_coding_blob.read().unwrap();
                     blocktree
-                        .put_coding_blob_bytes_raw(
+                        .place_encrypting_obj_bytes_plain(
                             slot,
                             blob.index(),
                             &blob.data[..blob.size() + BLOB_HEADER_SIZE],

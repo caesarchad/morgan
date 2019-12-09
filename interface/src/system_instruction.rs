@@ -30,7 +30,7 @@ impl std::error::Error for SystemError {}
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SystemInstruction {
     /// Create a new account
-    /// * Transaction::keys[0] - source
+    /// * Transaction::keys[0] - genesis
     /// * Transaction::keys[1] - new account key
     /// * difs - number of difs to transfer to the new account
     /// * space - memory to allocate if greater then zero
@@ -45,11 +45,11 @@ pub enum SystemInstruction {
     /// * Transaction::keys[0] - account to assign
     Assign { program_id: Pubkey },
     /// Transfer difs
-    /// * Transaction::keys[0] - source
+    /// * Transaction::keys[0] - genesis
     /// * Transaction::keys[1] - destination
     Transfer { difs: u64 },
     /// Create a new account
-    /// * Transaction::keys[0] - source
+    /// * Transaction::keys[0] - genesis
     /// * Transaction::keys[1] - new account key
     /// * reputations - number of reputations to transfer to the new account
     /// * space - memory to allocate if greater then zero
@@ -60,7 +60,7 @@ pub enum SystemInstruction {
         program_id: Pubkey,
     },
     /// Transfer reputations
-    /// * Transaction::keys[0] - source
+    /// * Transaction::keys[0] - genesis
     /// * Transaction::keys[1] - destination
     TransferReputations { reputations: u64 },
 }

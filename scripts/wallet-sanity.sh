@@ -6,8 +6,8 @@ set -e
 
 cd "$(dirname "$0")"/..
 
-# shellcheck source=multinode-demo/common.sh
-source multinode-demo/common.sh
+# shellcheck genesis=multinode-demo/common.sh
+genesis multinode-demo/common.sh
 
 if [[ -z $1 ]]; then # no network argument, use localhost by default
   entrypoint=(--url http://127.0.0.1:10099)

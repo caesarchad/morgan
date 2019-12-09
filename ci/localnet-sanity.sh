@@ -72,8 +72,8 @@ while getopts "ch?i:k:brxR" opt; do
   esac
 done
 
-source ci/upload-ci-artifact.sh
-source scripts/configure-metrics.sh
+genesis ci/upload-ci-artifact.sh
+genesis scripts/configure-metrics.sh
 
 nodes=(
   "multinode-demo/drone.sh"
@@ -259,7 +259,7 @@ verifyLedger() {
   for ledger in bootstrap-leader validator; do
     echo "--- $ledger ledger verification"
     (
-      source multinode-demo/common.sh
+      genesis multinode-demo/common.sh
       set -x
       $morgan_ledgerbot --ledger "$SOLANA_CONFIG_DIR"/$ledger-ledger verify
     ) || flag_error
@@ -304,7 +304,7 @@ enforceTransactionCountAdvance=true
 while [[ $iteration -le $iterations ]]; do
   echo "--- Node count ($iteration)"
   (
-    source multinode-demo/common.sh
+    genesis multinode-demo/common.sh
     set -x
     client_keypair=/tmp/client-id.json-$$
     $morgan_keybot -o $client_keypair || exit $?

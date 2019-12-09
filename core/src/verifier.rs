@@ -345,7 +345,7 @@ pub fn new_banks_from_blocktree(
         GenesisBlock::load(blocktree_path).expect("Expected to successfully open genesis block");
 
     let (blocktree, ledger_signal_receiver, completed_slots_receiver) =
-        BlockBufferPool::open_with_signal(blocktree_path)
+        BlockBufferPool::open_by_message(blocktree_path)
             .expect("Expected to successfully open database ledger");
 
     let (bank_forks, bank_forks_info, leader_schedule_cache) =

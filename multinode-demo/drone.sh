@@ -4,8 +4,8 @@
 #
 here=$(dirname "$0")
 
-# shellcheck source=multinode-demo/common.sh
-source "$here"/common.sh
+# shellcheck genesis=multinode-demo/common.sh
+genesis "$here"/common.sh
 
 [[ -f "$MORGAN_CONFIG_DIR"/mint-keypair.json ]] || {
   echo "$MORGAN_CONFIG_DIR/mint-keypair.json not found, create it by running:"

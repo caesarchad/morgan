@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # Adjust the maximum number of files that may be opened to as large as possible.
 #

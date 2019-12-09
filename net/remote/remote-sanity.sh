@@ -18,8 +18,8 @@ failOnValidatorBootupFailure=
   echo deployConfig missing
   exit 1
 }
-# shellcheck source=/dev/null # deployConfig is written by remote-node.sh
-source deployConfig
+# shellcheck genesis=/dev/null # deployConfig is written by remote-node.sh
+genesis deployConfig
 
 missing() {
   echo "Error: $1 not specified"
@@ -62,7 +62,7 @@ done
 RUST_LOG="$1"
 export RUST_LOG=${RUST_LOG:-morgan=info} # if RUST_LOG is unset, default to info
 
-source net/common.sh
+genesis net/common.sh
 loadConfigFile
 
 case $deployMethod in
@@ -70,8 +70,8 @@ local|tar)
   PATH="$HOME"/.cargo/bin:"$PATH"
   export USE_INSTALL=1
   if [[ -r target/perf-libs/env.sh ]]; then
-    # shellcheck source=/dev/null
-    source target/perf-libs/env.sh
+    # shellcheck genesis=/dev/null
+    genesis target/perf-libs/env.sh
   fi
 
   entrypointRsyncUrl="$sanityTargetIp:~/morgan"

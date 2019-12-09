@@ -4,8 +4,8 @@ set -e
 here=$(dirname "$0")
 SOLANA_ROOT="$(cd "$here"/..; pwd)"
 
-# shellcheck source=net/common.sh
-source "$here"/common.sh
+# shellcheck genesis=net/common.sh
+genesis "$here"/common.sh
 
 usage() {
   exitcode=0
@@ -239,8 +239,8 @@ build() {
   supported=("18.04")
   declare MAYBE_DOCKER=
   if [[ $(uname) != Linux || ! " ${supported[*]} " =~ $(lsb_release -sr) ]]; then
-    # shellcheck source=ci/rust-version.sh
-    source "$SOLANA_ROOT"/ci/rust-version.sh
+    # shellcheck genesis=ci/rust-version.sh
+    genesis "$SOLANA_ROOT"/ci/rust-version.sh
     MAYBE_DOCKER="ci/docker-run.sh $rust_stable_docker_image"
   fi
   SECONDS=0
@@ -252,8 +252,8 @@ build() {
     rm -rf farf
 
     if [[ -r target/perf-libs/env.sh ]]; then
-      # shellcheck source=/dev/null
-      source target/perf-libs/env.sh
+      # shellcheck genesis=/dev/null
+      genesis target/perf-libs/env.sh
     fi
     $MAYBE_DOCKER bash -c "
       set -ex

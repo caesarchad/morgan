@@ -21,7 +21,7 @@ missing() {
 [[ -n $deployMethod ]] || missing deployMethod
 [[ -n $entrypointIp ]] || missing entrypointIp
 
-source net/common.sh
+genesis net/common.sh
 loadConfigFile
 
 threadCount=$(nproc)
@@ -35,8 +35,8 @@ local|tar)
   export USE_INSTALL=1
 
   ./fetch-perf-libs.sh
-  # shellcheck source=/dev/null
-  source ./target/perf-libs/env.sh
+  # shellcheck genesis=/dev/null
+  genesis ./target/perf-libs/env.sh
 
   net/scripts/rsync-retry.sh -vPrc "$entrypointIp:~/.cargo/bin/morgan*" ~/.cargo/bin/
   ;;

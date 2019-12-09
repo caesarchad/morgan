@@ -212,6 +212,6 @@ mod tests {
             let _ = poh_service.join().unwrap();
             let _ = entry_producer.join().unwrap();
         }
-        BlockBufferPool::destroy(&ledger_path).unwrap();
+        BlockBufferPool::destruct(&ledger_path).unwrap();
     }
 }

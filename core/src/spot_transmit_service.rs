@@ -48,10 +48,10 @@ fn retransmit_blobs(blobs: &[SharedBlob], retransmit: &BlobSender, id: &Pubkey) 
 
 /// Process a blob: Add blob to the ledger window.
 fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<BlockBufferPool>) -> Result<()> {
-    // make an iterator for insert_data_blobs()
+    // make an iterator for punctuate_info_objs()
     let blobs: Vec<_> = blobs.iter().map(move |blob| blob.read().unwrap()).collect();
 
-    blocktree.insert_data_blobs(blobs.iter().filter_map(|blob| {
+    blocktree.punctuate_info_objs(blobs.iter().filter_map(|blob| {
         if !blob.is_coding() {
             Some(&(**blob))
         } else {
@@ -65,7 +65,7 @@ fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<BlockBufferPool>) -> Resu
 
         // Insert the new blob into block tree
         if blob.is_coding() {
-            blocktree.put_coding_blob_bytes(
+            blocktree.place_encrypting_obj_bytes(
                 blob.slot(),
                 blob.index(),
                 &blob.data[..BLOB_HEADER_SIZE + blob.size()],
@@ -294,12 +294,12 @@ mod test {
         }
 
         assert_eq!(
-            blocktree.get_slot_entries(0, 0, None).unwrap(),
+            blocktree.fetch_slit_items(0, 0, None).unwrap(),
             original_entries
         );
 
         drop(blocktree);
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod test {
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
         let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_with_signal(&blocktree_path)
+        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&blocktree_path)
             .expect("Expected to be able to open database ledger");
         let blocktree = Arc::new(blocktree);
 
@@ -431,7 +431,7 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
         let _ignored = remove_dir_all(&blocktree_path);
     }
 
@@ -451,7 +451,7 @@ mod test {
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
         let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_with_signal(&blocktree_path)
+        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&blocktree_path)
             .expect("Expected to be able to open database ledger");
 
         let blocktree = Arc::new(blocktree);
@@ -506,7 +506,7 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
         let _ignored = remove_dir_all(&blocktree_path);
     }
 }

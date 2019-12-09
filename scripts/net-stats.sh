@@ -8,8 +8,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-# shellcheck source=scripts/configure-metrics.sh
-source configure-metrics.sh
+# shellcheck genesis=scripts/configure-metrics.sh
+genesis configure-metrics.sh
 
 packets_sent=0
 packets_sent_diff=0

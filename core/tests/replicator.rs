@@ -100,7 +100,7 @@ fn download_from_replicator(replicator_info: &ContactInfo) {
                         module_path!().to_string()
                     )
                 );
-                let entries = BlockBufferPool::deserialize_blob_data(&br.data()).unwrap();
+                let entries = BlockBufferPool::deserialize_obj_info(&br.data()).unwrap();
                 for entry in &entries {
                     // info!("{}", Info(format!("entry: {:?}", entry).to_string()));
                     println!("{}",
@@ -226,8 +226,8 @@ fn test_replicator_startup_leader_hang() {
         assert!(replicator_res.is_err());
     }
 
-    let _ignored = BlockBufferPool::destroy(&leader_ledger_path);
-    let _ignored = BlockBufferPool::destroy(&replicator_ledger_path);
+    let _ignored = BlockBufferPool::destruct(&leader_ledger_path);
+    let _ignored = BlockBufferPool::destruct(&replicator_ledger_path);
     let _ignored = remove_dir_all(&leader_ledger_path);
     let _ignored = remove_dir_all(&replicator_ledger_path);
 }

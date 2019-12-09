@@ -1,10 +1,10 @@
-# |source| this file
+# |genesis| this file
 #
 # Adjusts system settings for optimal fullnode performance
 #
 
-# shellcheck source=scripts/ulimit-n.sh
-source "$(dirname "${BASH_SOURCE[0]}")"/ulimit-n.sh
+# shellcheck genesis=scripts/ulimit-n.sh
+genesis "$(dirname "${BASH_SOURCE[0]}")"/ulimit-n.sh
 
 sysctl_write() {
   declare name=$1
@@ -28,7 +28,7 @@ sysctl_write() {
   # Some versions of sysctl exit with 0 on permission denied errors
   current_value=$(sysctl -n "$name")
   if [[ $current_value != "$new_value" ]]; then
-    echo "==> Failed to set $name.  Try running: \"SUDO_OK=1 source ${BASH_SOURCE[0]}\""
+    echo "==> Failed to set $name.  Try running: \"SUDO_OK=1 genesis ${BASH_SOURCE[0]}\""
   fi
 }
 

@@ -81,7 +81,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    let _unused = BlockBufferPool::destroy(&ledger_path);
+    let _unused = BlockBufferPool::destruct(&ledger_path);
 }
 
 #[bench]
@@ -195,7 +195,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    let _unused = BlockBufferPool::destroy(&ledger_path);
+    let _unused = BlockBufferPool::destruct(&ledger_path);
 }
 
 #[bench]
@@ -318,5 +318,5 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         poh_service.join().unwrap();
     }
-    BlockBufferPool::destroy(&ledger_path).unwrap();
+    BlockBufferPool::destruct(&ledger_path).unwrap();
 }

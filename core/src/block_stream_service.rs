@@ -113,8 +113,8 @@ impl BlockstreamService {
         let timeout = Duration::new(1, 0);
         let (slot, slot_leader) = slot_full_receiver.recv_timeout(timeout)?;
 
-        let entries = blocktree.get_slot_entries(slot, 0, None).unwrap();
-        let blocktree_meta = blocktree.meta(slot).unwrap().unwrap();
+        let entries = blocktree.fetch_slit_items(slot, 0, None).unwrap();
+        let blocktree_meta = blocktree.meta_info(slot).unwrap().unwrap();
         let _parent_slot = if slot == 0 {
             None
         } else {
@@ -214,7 +214,7 @@ mod test {
         let expected_tick_heights = [5, 6, 7, 8, 8, 9];
 
         blocktree
-            .write_entries(1, 0, 0, ticks_per_slot, &entries)
+            .record_items(1, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
         slot_full_sender.send((1, leader_pubkey)).unwrap();

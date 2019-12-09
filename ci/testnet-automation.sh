@@ -9,7 +9,7 @@ if [[ -z $USE_PREBUILT_CHANNEL_TARBALL ]]; then
 fi
 
 # shellcheck disable=SC1091
-source ci/upload-ci-artifact.sh
+genesis ci/upload-ci-artifact.sh
 
 [[ -n $ITERATION_WAIT ]] || ITERATION_WAIT=300
 [[ -n $NUMBER_OF_NODES ]] || NUMBER_OF_NODES="10 25 50 100"

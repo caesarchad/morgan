@@ -107,7 +107,7 @@ impl Broadcast {
             .collect();
 
         let blob_index = blocktree
-            .meta(bank.slot())
+            .meta_info(bank.slot())
             .expect("Database error")
             .map(|meta| meta.consumed)
             .unwrap_or(0);
@@ -127,7 +127,7 @@ impl Broadcast {
             blobs.last().unwrap().write().unwrap().set_is_last_in_slot();
         }
 
-        blocktree.write_shared_blobs(&blobs)?;
+        blocktree.record_public_objs(&blobs)?;
 
         let coding = self.coding_generator.next(&blobs);
 
@@ -377,7 +377,7 @@ mod test {
     #[test]
     fn test_broadcast_ledger() {
         morgan_logger::setup();
-        let ledger_path = get_tmp_ledger_path("test_broadcast_ledger");
+        let ledger_path = fetch_interim_bill_route("test_broadcast_ledger");
 
         {
             // Create the leader scheduler
@@ -415,7 +415,7 @@ mod test {
             for i in 0..max_tick_height - start_tick_height {
                 let slot = (start_tick_height + i + 1) / ticks_per_slot;
 
-                let result = blocktree.get_data_blob(slot, blob_index).unwrap();
+                let result = blocktree.fetch_info_obj(slot, blob_index).unwrap();
 
                 blob_index += 1;
                 result.expect("expect blob presence");
@@ -428,6 +428,6 @@ mod test {
                 .expect("Expect successful join of broadcast service");
         }
 
-        BlockBufferPool::destroy(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
     }
 }

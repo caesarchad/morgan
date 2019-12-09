@@ -59,7 +59,7 @@ fn test_replay() {
     let dr_2 = new_gossip(cref2, target2.sockets.gossip, &exit);
 
     // setup some blob services to send blobs into the socket
-    // to simulate the source peer and get blobs out of the socket to
+    // to simulate the genesis peer and get blobs out of the socket to
     // simulate target peer
     let (s_reader, r_reader) = channel();
     let blob_sockets: Vec<Arc<UdpSocket>> = target2.sockets.tvu.into_iter().map(Arc::new).collect();
@@ -209,6 +209,6 @@ fn test_replay() {
         t_receiver.join().unwrap();
         t_responder.join().unwrap();
     }
-    BlockBufferPool::destroy(&blocktree_path).expect("Expected successful database destruction");
+    BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
     let _ignored = remove_dir_all(&blocktree_path);
 }

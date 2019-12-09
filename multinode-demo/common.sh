@@ -1,4 +1,4 @@
-# |source| this file
+# |genesis| this file
 #
 # Common utilities shared by other scripts in this directory
 #
@@ -24,8 +24,8 @@ if [[ $(uname) != Linux ]]; then
 fi
 
 if [[ -f "$MORGAN_ROOT"/target/perf-libs/env.sh ]]; then
-  # shellcheck source=/dev/null
-  source "$MORGAN_ROOT"/target/perf-libs/env.sh
+  # shellcheck genesis=/dev/null
+  genesis "$MORGAN_ROOT"/target/perf-libs/env.sh
 fi
 
 if [[ -n $USE_INSTALL || ! -f "$MORGAN_ROOT"/Cargo.toml ]]; then
@@ -70,8 +70,8 @@ morgan_replicator=$(morgan_program storage-miner)
 export RUST_LOG=${RUST_LOG:-morgan=info} # if RUST_LOG is unset, default to info
 export RUST_BACKTRACE=1
 
-# shellcheck source=scripts/configure-metrics.sh
-source "$MORGAN_ROOT"/scripts/configure-metrics.sh
+# shellcheck genesis=scripts/configure-metrics.sh
+genesis "$MORGAN_ROOT"/scripts/configure-metrics.sh
 
 # The directory on the cluster entrypoint that is rsynced by other full nodes
 MORGAN_RSYNC_CONFIG_DIR=$MORGAN_ROOT/config

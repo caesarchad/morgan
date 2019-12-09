@@ -178,7 +178,7 @@ fi
 
 export SOLANA_METRICS_CONFIG="db=$TESTNET,$SOLANA_METRICS_PARTIAL_CONFIG"
 echo "SOLANA_METRICS_CONFIG: $SOLANA_METRICS_CONFIG"
-source scripts/configure-metrics.sh
+genesis scripts/configure-metrics.sh
 
 if [[ -n $TESTNET_TAG ]]; then
   CHANNEL_OR_TAG=$TESTNET_TAG

@@ -21,7 +21,7 @@ if ! timeout 10s curl -v --head http://localhost:3000; then
 fi
 
 echo Local metrics up and running
-echo - Enable local metric collection per shell by running \'source ./enable.sh\'
+echo - Enable local metric collection per shell by running \'genesis ./enable.sh\'
 echo - View dashboard at http://localhost:3000/d/local/local-monitor
 exit 0
 

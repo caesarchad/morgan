@@ -8,7 +8,7 @@ pub type Fork = u64;
 pub struct AccountsIndex<T> {
     account_maps: HashMap<Pubkey, Vec<(Fork, T)>>,
     roots: HashSet<Fork>,
-    //This value that needs to be stored to recover the index from AppendVec
+    //This value that needs to be stored to restore the index from AppendVec
     pub last_root: Fork,
 }
 
@@ -20,7 +20,7 @@ impl<T: Clone> AccountsIndex<T> {
         let mut max = 0;
         let mut rv = None;
         for e in list.iter().rev() {
-            if e.0 >= max && (ancestors.get(&e.0).is_some() || self.is_root(e.0)) {
+            if e.0 >= max && (ancestors.get(&e.0).is_some() || self.is_base(e.0)) {
                 trace!("GET {} {:?}", e.0, ancestors);
                 rv = Some((&e.1, e.0));
                 max = e.0;
@@ -62,7 +62,7 @@ impl<T: Clone> AccountsIndex<T> {
     pub fn is_purged(&self, fork: Fork) -> bool {
         fork < self.last_root
     }
-    pub fn is_root(&self, fork: Fork) -> bool {
+    pub fn is_base(&self, fork: Fork) -> bool {
         self.roots.contains(&fork)
     }
     pub fn add_root(&mut self, fork: Fork) {
@@ -129,9 +129,9 @@ mod tests {
     #[test]
     fn test_is_root() {
         let mut index = AccountsIndex::<bool>::default();
-        assert!(!index.is_root(0));
+        assert!(!index.is_base(0));
         index.add_root(0);
-        assert!(index.is_root(0));
+        assert!(index.is_base(0));
     }
 
     #[test]
@@ -177,8 +177,8 @@ mod tests {
         index.add_root(0);
         index.add_root(1);
         index.cleanup_dead_fork(0);
-        assert!(index.is_root(1));
-        assert!(!index.is_root(0));
+        assert!(index.is_base(1));
+        assert!(!index.is_base(0));
     }
 
     #[test]
@@ -188,8 +188,8 @@ mod tests {
         index.add_root(0);
         index.add_root(1);
         index.cleanup_dead_fork(1);
-        assert!(!index.is_root(1));
-        assert!(index.is_root(0));
+        assert!(!index.is_base(1));
+        assert!(index.is_base(0));
     }
 
     #[test]

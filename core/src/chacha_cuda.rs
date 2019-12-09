@@ -48,7 +48,7 @@ pub fn chacha_cbc_encrypt_file_many_keys(
         chacha_init_sha_state(int_sha_states.as_mut_ptr(), num_keys as u32);
     }
     loop {
-        match blocktree.read_blobs_bytes(entry, SLOTS_PER_SEGMENT - total_entries, &mut buffer, 0) {
+        match blocktree.extract_objs_bytes(entry, SLOTS_PER_SEGMENT - total_entries, &mut buffer, 0) {
             Ok((num_entries, entry_len)) => {
                 debug!(
                     "chacha_cuda: encrypting segment: {} num_entries: {} entry_len: {}",
@@ -162,12 +162,12 @@ mod tests {
 
         let entries = make_tiny_test_entries(32);
         let ledger_dir = "test_encrypt_file_many_keys_single";
-        let ledger_path = get_tmp_ledger_path(ledger_dir);
+        let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
         let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
 
         blocktree
-            .write_entries(0, 0, 0, ticks_per_slot, &entries)
+            .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
         let out_path = Path::new("test_chacha_encrypt_file_many_keys_single_output.txt.enc");
@@ -198,11 +198,11 @@ mod tests {
 
         let entries = make_tiny_test_entries(32);
         let ledger_dir = "test_encrypt_file_many_keys_multiple";
-        let ledger_path = get_tmp_ledger_path(ledger_dir);
+        let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
         let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         blocktree
-            .write_entries(0, 0, 0, ticks_per_slot, &entries)
+            .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
         let out_path = Path::new("test_chacha_encrypt_file_many_keys_multiple_output.txt.enc");
@@ -252,7 +252,7 @@ mod tests {
     fn test_encrypt_file_many_keys_bad_key_length() {
         let mut keys = hex!("abc123");
         let ledger_dir = "test_encrypt_file_many_keys_bad_key_length";
-        let ledger_path = get_tmp_ledger_path(ledger_dir);
+        let ledger_path = fetch_interim_bill_route(ledger_dir);
         let samples = [0];
         let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         assert!(chacha_cbc_encrypt_file_many_keys(&blocktree, 0, &mut keys, &samples,).is_err());

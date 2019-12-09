@@ -49,7 +49,7 @@ pub fn chacha_cbc_encrypt_ledger(
     let mut entry = slice;
 
     loop {
-        match blocktree.read_blobs_bytes(0, SLOTS_PER_SEGMENT - total_entries, &mut buffer, entry) {
+        match blocktree.extract_objs_bytes(0, SLOTS_PER_SEGMENT - total_entries, &mut buffer, entry) {
             Ok((num_entries, entry_len)) => {
                 debug!(
                     "chacha: encrypting slice: {} num_entries: {} entry_len: {}",
@@ -218,14 +218,14 @@ mod tests {
     fn test_encrypt_ledger() {
         morgan_logger::setup();
         let ledger_dir = "chacha_test_encrypt_file";
-        let ledger_path = get_tmp_ledger_path(ledger_dir);
+        let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
         let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         let out_path = Path::new("test_chacha_encrypt_file_output.txt.enc");
 
         let entries = make_tiny_deterministic_test_entries(32);
         blocktree
-            .write_entries(0, 0, 0, ticks_per_slot, &entries)
+            .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
         let mut key = hex!(
