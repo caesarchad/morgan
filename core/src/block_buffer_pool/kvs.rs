@@ -1,5 +1,5 @@
 use crate::block_buffer_pool::db::columns as cf;
-use crate::block_buffer_pool::db::{Backend, Column, DbCursor, IWriteBatch, TypedColumn};
+use crate::block_buffer_pool::db::{DaemonDb, Column, DbCursor, IWriteBatch, TypedColumn};
 use crate::block_buffer_pool::BlockBufferPoolError;
 use crate::result::{Error, Result};
 use byteorder::{BigEndian, ByteOrder};
@@ -15,7 +15,7 @@ pub struct Kvs(KvStore);
 #[derive(Debug, Clone, Copy)]
 pub struct Dummy;
 
-impl Backend for Kvs {
+impl DaemonDb for Kvs {
     type Key = Key;
     type OwnedKey = Key;
     type ColumnFamily = ColumnFamily;
@@ -70,7 +70,7 @@ impl Backend for Kvs {
 }
 
 impl Column<Kvs> for cf::Coding {
-    const NAME: &'static str = super::ERASURE_CF;
+    const NAME: &'static str = super::ERASURE_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn key(index: (u64, u64)) -> Key {
@@ -83,7 +83,7 @@ impl Column<Kvs> for cf::Coding {
 }
 
 impl Column<Kvs> for cf::Data {
-    const NAME: &'static str = super::DATA_CF;
+    const NAME: &'static str = super::DATA_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn key((slot, index): (u64, u64)) -> Key {
@@ -101,7 +101,7 @@ impl Column<Kvs> for cf::Data {
 }
 
 impl Column<Kvs> for cf::Orphans {
-    const NAME: &'static str = super::ORPHANS_CF;
+    const NAME: &'static str = super::SINGLETON_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Key {
@@ -119,8 +119,8 @@ impl TypedColumn<Kvs> for cf::Orphans {
     type Type = bool;
 }
 
-impl Column<Kvs> for cf::Root {
-    const NAME: &'static str = super::ROOT_CF;
+impl Column<Kvs> for cf::BaseColumn {
+    const NAME: &'static str = super::GENESIS_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Key {
@@ -134,12 +134,12 @@ impl Column<Kvs> for cf::Root {
     }
 }
 
-impl TypedColumn<Kvs> for cf::Root {
+impl TypedColumn<Kvs> for cf::BaseColumn {
     type Type = bool;
 }
 
 impl Column<Kvs> for cf::SlotMeta {
-    const NAME: &'static str = super::META_CF;
+    const NAME: &'static str = super::METAINFO_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Key {
@@ -154,7 +154,7 @@ impl Column<Kvs> for cf::SlotMeta {
 }
 
 impl Column<Kvs> for cf::SlotMeta {
-    const NAME: &'static str = super::META_CF;
+    const NAME: &'static str = super::METAINFO_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Key {
@@ -173,7 +173,7 @@ impl TypedColumn<Kvs> for cf::SlotMeta {
 }
 
 impl Column<Kvs> for cf::ErasureMeta {
-    const NAME: &'static str = super::ERASURE_META_CF;
+    const NAME: &'static str = super::ERASURE_METAINFO_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn key((slot, set_index): (u64, u64)) -> Key {

@@ -1,6 +1,5 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg};
-use log::*;
-use morgan::cluster_message::{Node, FULLNODE_PORT_RANGE};
+use morgan::node_group_info::{Node, FULLNODE_PORT_RANGE};
 use morgan::connection_info::ContactInfo;
 use morgan::local_vote_signer_service::LocalVoteSignerService;
 use morgan::service::Service;
@@ -221,7 +220,7 @@ fn main() {
     } else {
         validator_config.account_paths = None;
     }
-    let cluster_entrypoint = matches.value_of("entrypoint").map(|entrypoint| {
+    let node_group_entrypoint = matches.value_of("entrypoint").map(|entrypoint| {
         let entrypoint_addr = morgan_netutil::parse_host_port(entrypoint)
             .expect("failed to parse entrypoint address");
         gossip_addr.set_ip(morgan_netutil::get_public_ip_addr(&entrypoint_addr).unwrap());
@@ -260,7 +259,7 @@ fn main() {
         &staking_account,
         &Arc::new(voting_keypair),
         &Arc::new(storage_keypair),
-        cluster_entrypoint.as_ref(),
+        node_group_entrypoint.as_ref(),
         &validator_config,
     );
 

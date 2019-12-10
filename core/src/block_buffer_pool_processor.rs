@@ -138,9 +138,9 @@ pub enum BlocktreeProcessorError {
     LedgerVerificationFailed,
 }
 
-pub fn process_blocktree(
+pub fn process_block_buffer_pool(
     genesis_block: &GenesisBlock,
-    blocktree: &BlockBufferPool,
+    block_buffer_pool: &BlockBufferPool,
     account_paths: Option<String>,
 ) -> result::Result<(BankForks, Vec<BankForksInfo>, LeaderScheduleCache), BlocktreeProcessorError> {
     let now = Instant::now();
@@ -160,7 +160,7 @@ pub fn process_blocktree(
         let last_entry_hash = bank.last_blockhash();
 
         // Load the metadata for this slot
-        let meta = blocktree
+        let meta = block_buffer_pool
             .meta_info(slot)
             .map_err(|err| {
                 // warn!("Failed to load meta for slot {}: {:?}", slot, err);
@@ -178,7 +178,7 @@ pub fn process_blocktree(
         vec![(slot, meta, bank, entry_height, last_entry_hash)]
     };
 
-    blocktree.config_base(0, 0).expect("Couldn't set first root");
+    block_buffer_pool.config_base(0, 0).expect("Couldn't set first root");
 
     let leader_schedule_cache = LeaderScheduleCache::new(*pending_slots[0].2.epoch_schedule(), 0);
 
@@ -202,7 +202,7 @@ pub fn process_blocktree(
         }
 
         // Fetch all entries for this slot
-        let mut entries = blocktree.fetch_slit_items(slot, 0, None).map_err(|err| {
+        let mut entries = block_buffer_pool.fetch_slit_items(slot, 0, None).map_err(|err| {
             // warn!("Failed to load entries for slot {}: {:?}", slot, err);
             println!(
                 "{}",
@@ -280,7 +280,7 @@ pub fn process_blocktree(
 
         bank.freeze(); // all banks handled by this routine are created from complete slots
 
-        if blocktree.is_base(slot) {
+        if block_buffer_pool.is_base(slot) {
             root = slot;
             leader_schedule_cache.config_base(slot);
             bank.squash();
@@ -300,7 +300,7 @@ pub fn process_blocktree(
 
         // This is a fork point, create a new child bank for each fork
         for next_slot in meta.next_slots {
-            let next_meta = blocktree
+            let next_meta = block_buffer_pool
                 .meta_info(next_slot)
                 .map_err(|err| {
                     // warn!("Failed to load meta for slot {}: {:?}", slot, err);
@@ -315,7 +315,7 @@ pub fn process_blocktree(
                 })?
                 .unwrap();
 
-            // only process full slots in blocktree_processor, replay_stage
+            // only process full slots in block_buffer_processor, replay_stage
             // handles any partials
             if next_meta.is_full() {
                 let next_bank = Arc::new(Bank::new_from_parent(
@@ -420,8 +420,8 @@ pub mod tests {
     use morgan_interface::system_transaction;
     use morgan_interface::transaction::TransactionError;
 
-    pub fn fill_blocktree_slot_with_ticks(
-        blocktree: &BlockBufferPool,
+    pub fn fill_block_buffer_pool_slot_with_ticks(
+        block_buffer_pool: &BlockBufferPool,
         ticks_per_slot: u64,
         slot: u64,
         parent_slot: u64,
@@ -431,20 +431,20 @@ pub mod tests {
         let last_entry_hash = entries.last().unwrap().hash;
 
         let blobs = entries_to_blobs(&entries, slot, parent_slot, true);
-        blocktree.punctuate_info_objs(blobs.iter()).unwrap();
+        block_buffer_pool.punctuate_info_objs(blobs.iter()).unwrap();
 
         last_entry_hash
     }
 
     #[test]
-    fn test_process_blocktree_with_incomplete_slot() {
+    fn test_process_block_buffer_pool_with_incomplete_slot() {
         morgan_logger::setup();
 
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(10_000);
         let ticks_per_slot = genesis_block.ticks_per_slot;
 
         /*
-          Build a blocktree in the ledger with the following fork structure:
+          Build a block_buffer_pool in the ledger with the following fork structure:
 
                slot 0 (all ticks)
                  |
@@ -459,7 +459,7 @@ pub mod tests {
         let (ledger_path, mut blockhash) = create_new_tmp_ledger!(&genesis_block);
         debug!("ledger_path: {:?}", ledger_path);
 
-        let blocktree =
+        let block_buffer_pool =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Write slot 1
@@ -474,14 +474,14 @@ pub mod tests {
             entries.pop();
 
             let blobs = entries_to_blobs(&entries, slot, parent_slot, false);
-            blocktree.punctuate_info_objs(blobs.iter()).unwrap();
+            block_buffer_pool.punctuate_info_objs(blobs.iter()).unwrap();
         }
 
         // slot 2, points at slot 1
-        fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 2, 1, blockhash);
+        fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 2, 1, blockhash);
 
         let (mut _bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 1);
         assert_eq!(
@@ -494,7 +494,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_process_blocktree_with_two_forks_and_squash() {
+    fn test_process_block_buffer_with_two_forks_and_squash() {
         morgan_logger::setup();
 
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(10_000);
@@ -506,7 +506,7 @@ pub mod tests {
         let mut last_entry_hash = blockhash;
 
         /*
-            Build a blocktree in the ledger with the following fork structure:
+            Build a block_buffer_pool in the ledger with the following fork structure:
 
                  slot 0
                    |
@@ -519,20 +519,20 @@ pub mod tests {
                    slot 4 <-- config_base(true)
 
         */
-        let blocktree =
+        let block_buffer_pool =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Fork 1, ending at slot 3
         let last_slot1_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 1, 0, last_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 1, 0, last_entry_hash);
         last_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 2, 1, last_slot1_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 2, 1, last_slot1_entry_hash);
         let last_fork1_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 3, 2, last_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 3, 2, last_entry_hash);
 
         // Fork 2, ending at slot 4
         let last_fork2_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 4, 1, last_slot1_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 4, 1, last_slot1_entry_hash);
 
         // info!("{}", Info(format!("last_fork1_entry.hash: {:?}", last_fork1_entry_hash).to_string()));
         // info!("{}", Info(format!("last_fork2_entry.hash: {:?}", last_fork2_entry_hash).to_string()));
@@ -550,10 +550,10 @@ pub mod tests {
                 module_path!().to_string()
             )
         );
-        blocktree.config_base(4, 0).unwrap();
+        block_buffer_pool.config_base(4, 0).unwrap();
 
         let (bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 1); // One fork, other one is ignored b/c not a descendant of the root
 
@@ -581,7 +581,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_process_blocktree_with_two_forks() {
+    fn test_process_block_buffer_with_two_forks() {
         morgan_logger::setup();
 
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(10_000);
@@ -593,7 +593,7 @@ pub mod tests {
         let mut last_entry_hash = blockhash;
 
         /*
-            Build a blocktree in the ledger with the following fork structure:
+            Build a block_buffer_pool in the ledger with the following fork structure:
 
                  slot 0
                    |
@@ -606,20 +606,20 @@ pub mod tests {
                    slot 4
 
         */
-        let blocktree =
+        let block_buffer_pool =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Fork 1, ending at slot 3
         let last_slot1_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 1, 0, last_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 1, 0, last_entry_hash);
         last_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 2, 1, last_slot1_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 2, 1, last_slot1_entry_hash);
         let last_fork1_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 3, 2, last_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 3, 2, last_entry_hash);
 
         // Fork 2, ending at slot 4
         let last_fork2_entry_hash =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 4, 1, last_slot1_entry_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 4, 1, last_slot1_entry_hash);
 
         // info!("{}", Info(format!("last_fork1_entry.hash: {:?}", last_fork1_entry_hash).to_string()));
         // info!("{}", Info(format!("last_fork2_entry.hash: {:?}", last_fork2_entry_hash).to_string()));
@@ -637,11 +637,11 @@ pub mod tests {
                 module_path!().to_string()
             )
         );
-        blocktree.config_base(0, 0).unwrap();
-        blocktree.config_base(1, 0).unwrap();
+        block_buffer_pool.config_base(0, 0).unwrap();
+        block_buffer_pool.config_base(1, 0).unwrap();
 
         let (bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 2); // There are two forks
         assert_eq!(
@@ -685,7 +685,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_process_blocktree_epoch_boundary_root() {
+    fn test_process_block_buffer_epoch_boundary_root() {
         morgan_logger::setup();
 
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(10_000);
@@ -695,7 +695,7 @@ pub mod tests {
         let (ledger_path, blockhash) = create_new_tmp_ledger!(&genesis_block);
         let mut last_entry_hash = blockhash;
 
-        let blocktree =
+        let block_buffer_pool =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
 
         // Let last_slot be the number of slots in the first two epochs
@@ -704,8 +704,8 @@ pub mod tests {
 
         // Create a single chain of slots with all indexes in the range [0, last_slot + 1]
         for i in 1..=last_slot + 1 {
-            last_entry_hash = fill_blocktree_slot_with_ticks(
-                &blocktree,
+            last_entry_hash = fill_block_buffer_pool_slot_with_ticks(
+                &block_buffer_pool,
                 ticks_per_slot,
                 i,
                 i - 1,
@@ -714,14 +714,14 @@ pub mod tests {
         }
 
         // Set a root on the last slot of the last confirmed epoch
-        blocktree.config_base(last_slot, 0).unwrap();
+        block_buffer_pool.config_base(last_slot, 0).unwrap();
 
         // Set a root on the next slot of the confrimed epoch
-        blocktree.config_base(last_slot + 1, last_slot).unwrap();
+        block_buffer_pool.config_base(last_slot + 1, last_slot).unwrap();
 
         // Check that we can properly restart the ledger / leader scheduler doesn't fail
         let (bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 1); // There is one fork
         assert_eq!(
@@ -850,14 +850,14 @@ pub mod tests {
         // Fill up the rest of slot 1 with ticks
         entries.extend(create_ticks(genesis_block.ticks_per_slot, last_entry_hash));
 
-        let blocktree =
+        let block_buffer_pool =
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to successfully open database ledger");
-        blocktree
+        block_buffer_pool
             .record_items(1, 0, 0, genesis_block.ticks_per_slot, &entries)
             .unwrap();
         let entry_height = genesis_block.ticks_per_slot + entries.len() as u64;
         let (bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 1);
         assert_eq!(bank_forks.root(), 0);
@@ -886,9 +886,9 @@ pub mod tests {
         genesis_block.ticks_per_slot = 1;
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
-        let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
         let (bank_forks, bank_forks_info, _) =
-            process_blocktree(&genesis_block, &blocktree, None).unwrap();
+            process_block_buffer_pool(&genesis_block, &block_buffer_pool, None).unwrap();
 
         assert_eq!(bank_forks_info.len(), 1);
         assert_eq!(

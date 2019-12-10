@@ -30,33 +30,26 @@ pub const KEYS_DIRECTORY: &str = "keys";
 pub const N3H_BINARIES_DIRECTORY: &str = "n3h-binaries";
 pub const DNA_EXTENSION: &str = "dna.json";
 
-/// Returns the project root builder for holochain directories.
+
 pub fn project_root() -> Option<directories::ProjectDirs> {
     directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
 }
 
-/// Returns the path to the root config directory for all of Holochain.
-/// If we can get a user directory it will be an XDG compliant path
-/// like "/home/peter/.config/holochain".
-/// If it can't get a user directory it will default to "/etc/holochain".
+
 pub fn config_root() -> PathBuf {
     project_root()
         .map(|dirs| dirs.config_dir().to_owned())
         .unwrap_or_else(|| PathBuf::from("/etc").join(APPLICATION))
 }
 
-/// Returns the path to the root data directory for all of Holochain.
-/// If we can get a user directory it will be an XDG compliant path
-/// like "/home/peter/.local/share/holochain".
-/// If it can't get a user directory it will default to "/etc/holochain".
+
 pub fn data_root() -> PathBuf {
     project_root()
         .map(|dirs| dirs.data_dir().to_owned())
         .unwrap_or_else(|| PathBuf::from("/etc").join(APPLICATION))
 }
 
-/// Returns the path to where agent keys are stored and looked for by default.
-/// Something like "~/.config/holochain/keys".
+
 pub fn keys_directory() -> PathBuf {
     config_root().join(KEYS_DIRECTORY)
 }
@@ -71,7 +64,7 @@ impl BlockstreamService {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         slot_full_receiver: Receiver<(u64, Pubkey)>,
-        blocktree: Arc<BlockBufferPool>,
+        block_buffer_pool: Arc<BlockBufferPool>,
         blockstream_socket: String,
         exit: &Arc<AtomicBool>,
     ) -> Self {
@@ -84,7 +77,7 @@ impl BlockstreamService {
                     break;
                 }
                 if let Err(e) =
-                    Self::process_entries(&slot_full_receiver, &blocktree, &mut blockstream)
+                    Self::process_entries(&slot_full_receiver, &block_buffer_pool, &mut blockstream)
                 {
                     match e {
                         Error::RecvTimeoutError(RecvTimeoutError::Disconnected) => break,
@@ -107,18 +100,18 @@ impl BlockstreamService {
     }
     fn process_entries(
         slot_full_receiver: &Receiver<(u64, Pubkey)>,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         blockstream: &mut Blockstream,
     ) -> Result<()> {
         let timeout = Duration::new(1, 0);
         let (slot, slot_leader) = slot_full_receiver.recv_timeout(timeout)?;
 
-        let entries = blocktree.fetch_slit_items(slot, 0, None).unwrap();
-        let blocktree_meta = blocktree.meta_info(slot).unwrap().unwrap();
+        let entries = block_buffer_pool.fetch_slit_items(slot, 0, None).unwrap();
+        let block_buffer_meta = block_buffer_pool.meta_info(slot).unwrap().unwrap();
         let _parent_slot = if slot == 0 {
             None
         } else {
-            Some(blocktree_meta.parent_slot)
+            Some(block_buffer_meta.parent_slot)
         };
         let ticks_per_slot = entries
             .iter()
@@ -178,14 +171,14 @@ mod test {
         let ticks_per_slot = 5;
         let leader_pubkey = Pubkey::new_rand();
 
-        // Set up genesis block and blocktree
+        // Set up genesis block and block_buffer_pool
         let GenesisBlockInfo {
             mut genesis_block, ..
         } = create_genesis_block(1000);
         genesis_block.ticks_per_slot = ticks_per_slot;
 
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
-        let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
 
         // Set up blockstream
         let mut blockstream = Blockstream::new("test_stream".to_string());
@@ -213,14 +206,14 @@ mod test {
         let expected_entries = entries.clone();
         let expected_tick_heights = [5, 6, 7, 8, 8, 9];
 
-        blocktree
+        block_buffer_pool
             .record_items(1, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
         slot_full_sender.send((1, leader_pubkey)).unwrap();
         BlockstreamService::process_entries(
             &slot_full_receiver,
-            &Arc::new(blocktree),
+            &Arc::new(block_buffer_pool),
             &mut blockstream,
         )
         .unwrap();

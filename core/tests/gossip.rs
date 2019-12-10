@@ -2,7 +2,7 @@
 extern crate log;
 
 use rayon::iter::*;
-use morgan::cluster_message::{ClusterInfo, Node};
+use morgan::node_group_info::{NodeGroupInfo, Node};
 use morgan::gossip_service::GossipService;
 
 use morgan::packet::{Blob, SharedBlob};
@@ -16,18 +16,18 @@ use std::sync::{Arc, RwLock};
 use std::thread::sleep;
 use std::time::Duration;
 
-fn test_node(exit: &Arc<AtomicBool>) -> (Arc<RwLock<ClusterInfo>>, GossipService, UdpSocket) {
+fn test_node(exit: &Arc<AtomicBool>) -> (Arc<RwLock<NodeGroupInfo>>, GossipService, UdpSocket) {
     let keypair = Arc::new(Keypair::new());
     let mut test_node = Node::new_localhost_with_pubkey(&keypair.pubkey());
-    let cluster_info = Arc::new(RwLock::new(ClusterInfo::new(
+    let node_group_info = Arc::new(RwLock::new(NodeGroupInfo::new(
         test_node.info.clone(),
         keypair,
     )));
     let gossip_service =
-        GossipService::new(&cluster_info, None, None, test_node.sockets.gossip, exit);
-    let _ = cluster_info.read().unwrap().my_data();
+        GossipService::new(&node_group_info, None, None, test_node.sockets.gossip, exit);
+    let _ = node_group_info.read().unwrap().my_data();
     (
-        cluster_info,
+        node_group_info,
         gossip_service,
         test_node.sockets.tvu.pop().unwrap(),
     )
@@ -39,7 +39,7 @@ fn test_node(exit: &Arc<AtomicBool>) -> (Arc<RwLock<ClusterInfo>>, GossipService
 /// tests that actually use this function are below
 fn run_gossip_topo<F>(num: usize, topo: F)
 where
-    F: Fn(&Vec<(Arc<RwLock<ClusterInfo>>, GossipService, UdpSocket)>) -> (),
+    F: Fn(&Vec<(Arc<RwLock<NodeGroupInfo>>, GossipService, UdpSocket)>) -> (),
 {
     let exit = Arc::new(AtomicBool::new(false));
     let listen: Vec<_> = (0..num).map(|_| test_node(&exit)).collect();
@@ -177,7 +177,7 @@ pub fn cluster_info_retransmit() -> result::Result<()> {
     let b = SharedBlob::default();
     b.write().unwrap().meta.size = 10;
     let peers = c1.read().unwrap().retransmit_peers();
-    ClusterInfo::retransmit_to(&c1, &peers, &b, None, &tn1, false)?;
+    NodeGroupInfo::retransmit_to(&c1, &peers, &b, None, &tn1, false)?;
     let res: Vec<_> = [tn1, tn2, tn3]
         .into_par_iter()
         .map(|s| {

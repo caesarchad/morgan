@@ -4,7 +4,7 @@ extern crate morgan;
 use log::*;
 use morgan::treasury_stage::create_test_recorder;
 use morgan::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
-use morgan::cluster_message::{ClusterInfo, Node};
+use morgan::node_group_info::{NodeGroupInfo, Node};
 use morgan::entry_info::next_entry_mut;
 use morgan::entry_info::EntrySlice;
 use morgan::genesis_utils::{create_genesis_block_with_leader, GenesisBlockInfo};
@@ -29,11 +29,11 @@ use std::time::Duration;
 use morgan_helper::logHelper::*;
 
 fn new_gossip(
-    cluster_info: Arc<RwLock<ClusterInfo>>,
+    node_group_info: Arc<RwLock<NodeGroupInfo>>,
     gossip: UdpSocket,
     exit: &Arc<AtomicBool>,
 ) -> GossipService {
-    GossipService::new(&cluster_info, None, None, gossip, exit)
+    GossipService::new(&node_group_info, None, None, gossip, exit)
 }
 
 /// Test that message sent from leader to target1 and replayed to target2
@@ -47,13 +47,13 @@ fn test_replay() {
     let exit = Arc::new(AtomicBool::new(false));
 
     // start cluster_info_l
-    let cluster_info_l = ClusterInfo::new_with_invalid_keypair(leader.info.clone());
+    let cluster_info_l = NodeGroupInfo::new_with_invalid_keypair(leader.info.clone());
 
     let cref_l = Arc::new(RwLock::new(cluster_info_l));
     let dr_l = new_gossip(cref_l, leader.sockets.gossip, &exit);
 
     // start cluster_info2
-    let mut cluster_info2 = ClusterInfo::new_with_invalid_keypair(target2.info.clone());
+    let mut cluster_info2 = NodeGroupInfo::new_with_invalid_keypair(target2.info.clone());
     cluster_info2.insert_info(leader.info.clone());
     let cref2 = Arc::new(RwLock::new(cluster_info2));
     let dr_2 = new_gossip(cref2, target2.sockets.gossip, &exit);
@@ -83,19 +83,19 @@ fn test_replay() {
     } = create_genesis_block_with_leader(mint_balance, &leader.info.id, leader_balance);
     genesis_block.ticks_per_slot = 160;
     genesis_block.slots_per_epoch = MINIMUM_SLOT_LENGTH as u64;
-    let (blocktree_path, blockhash) = create_new_tmp_ledger!(&genesis_block);
+    let (block_buffer_pool_path, blockhash) = create_new_tmp_ledger!(&genesis_block);
 
     let tvu_addr = target1.info.tvu;
 
     let (
         bank_forks,
         _bank_forks_info,
-        blocktree,
+        block_buffer_pool,
         ledger_signal_receiver,
         completed_slots_receiver,
         leader_schedule_cache,
         _,
-    ) = verifier::new_banks_from_blocktree(&blocktree_path, None);
+    ) = verifier::new_banks_from_block_buffer(&block_buffer_pool_path, None);
     let working_bank = bank_forks.working_bank();
     assert_eq!(
         working_bank.get_balance(&mint_keypair.pubkey()),
@@ -105,17 +105,17 @@ fn test_replay() {
     let leader_schedule_cache = Arc::new(leader_schedule_cache);
     // start cluster_info1
     let bank_forks = Arc::new(RwLock::new(bank_forks));
-    let mut cluster_info1 = ClusterInfo::new_with_invalid_keypair(target1.info.clone());
+    let mut cluster_info1 = NodeGroupInfo::new_with_invalid_keypair(target1.info.clone());
     cluster_info1.insert_info(leader.info.clone());
     let cref1 = Arc::new(RwLock::new(cluster_info1));
     let dr_1 = new_gossip(cref1.clone(), target1.sockets.gossip, &exit);
 
     let voting_keypair = Keypair::new();
     let storage_keypair = Arc::new(Keypair::new());
-    let blocktree = Arc::new(blocktree);
+    let block_buffer_pool = Arc::new(block_buffer_pool);
     {
         let (waterclock_service_exit, waterclock_recorder, waterclock_service, _entry_receiver) =
-            create_test_recorder(&working_bank, &blocktree);
+            create_test_recorder(&working_bank, &block_buffer_pool);
         let tvu = Tvu::new(
             &voting_keypair.pubkey(),
             Some(&Arc::new(voting_keypair)),
@@ -129,7 +129,7 @@ fn test_replay() {
                     fetch: target1.sockets.tvu,
                 }
             },
-            blocktree,
+            block_buffer_pool,
             STORAGE_ROTATE_TEST_COUNT,
             &StorageState::default(),
             None,
@@ -209,6 +209,6 @@ fn test_replay() {
         t_receiver.join().unwrap();
         t_responder.join().unwrap();
     }
-    BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
-    let _ignored = remove_dir_all(&blocktree_path);
+    BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
+    let _ignored = remove_dir_all(&block_buffer_pool_path);
 }

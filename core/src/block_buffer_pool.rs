@@ -1,6 +1,5 @@
-//! The `block_tree` module provides functions for parallel verification of the
-//! Proof of History ledger as well as iterative read, append write, and random
-//! access read to a persistent file-based ledger.
+//! The `block_buffer_pool` module provides functions for parallel verification of the
+//! system wide clock.
 use crate::entry_info::Entry;
 use crate::expunge::{self, Session};
 use crate::packet::{Blob, SharedBlob, BLOB_HEADER_SIZE};
@@ -57,12 +56,12 @@ macro_rules! db_imports {
         pub trait Column: db::Column<$db> {}
         impl<C: db::Column<$db>> Column for C {}
 
-        pub const BLOCKTREE_DIRECTORY: &str = $db_path;
+        pub const BLOCKBUFFERPOOL_DIR: &str = $db_path;
     };
 }
 
 #[cfg(not(feature = "kvstore"))]
-db_imports! {rocks, Rocks, "rocksdb"}
+db_imports! {rocks, RocksDB, "rocksdb"}
 #[cfg(feature = "kvstore")]
 db_imports! {kvs, Kvs, "kvstore"}
 
@@ -83,11 +82,11 @@ pub enum BlockBufferPoolError {
 // ledger window
 pub struct BlockBufferPool {
     db: Arc<Database>,
-    meta_cf: LedgerColumn<cf::SlotMeta>,
-    data_cf: LedgerColumn<cf::Data>,
-    erasure_cf: LedgerColumn<cf::Coding>,
-    erasure_meta_cf: LedgerColumn<cf::ErasureMeta>,
-    orphans_cf: LedgerColumn<cf::Orphans>,
+    m_c_g: LedgerColumn<cf::SlotMeta>,
+    d_c_g: LedgerColumn<cf::Data>,
+    e_c_g: LedgerColumn<cf::Coding>,
+    e_m_c_g: LedgerColumn<cf::ErasureMeta>,
+    sgt_c_g: LedgerColumn<cf::Orphans>,
     batch_processor: Arc<RwLock<BatchProcessor>>,
     session: Arc<expunge::Session>,
     pub new_blobs_signals: Vec<SyncSender<bool>>,
@@ -95,16 +94,16 @@ pub struct BlockBufferPool {
 }
 
 // Column family for metadata about a leader slot
-pub const META_CF: &str = "meta";
+pub const METAINFO_COLUMN_GROUP: &str = "meta";
 // Column family for the data in a leader slot
-pub const DATA_CF: &str = "data";
+pub const DATA_COLUMN_GROUP: &str = "data";
 // Column family for erasure data
-pub const ERASURE_CF: &str = "erasure";
-pub const ERASURE_META_CF: &str = "erasure_meta";
+pub const ERASURE_COLUMN_GROUP: &str = "erasure";
+pub const ERASURE_METAINFO_COLUMN_GROUP: &str = "erasure_meta";
 // Column family for orphans data
-pub const ORPHANS_CF: &str = "orphans";
+pub const SINGLETON_COLUMN_GROUP: &str = "orphans";
 // Column family for root data
-pub const ROOT_CF: &str = "root";
+pub const GENESIS_COLUMN_GROUP: &str = "root";
 
 impl BlockBufferPool {
     /// Opens a Ledger in directory, provides "infinite" window of blobs
@@ -112,7 +111,7 @@ impl BlockBufferPool {
         use std::path::Path;
 
         fs::create_dir_all(&ledger_path)?;
-        let ledger_path = Path::new(&ledger_path).join(BLOCKTREE_DIRECTORY);
+        let ledger_path = Path::new(&ledger_path).join(BLOCKBUFFERPOOL_DIR);
 
         // Open the database
         let db = Database::open(&ledger_path)?;
@@ -120,20 +119,20 @@ impl BlockBufferPool {
         let batch_processor = unsafe { Arc::new(RwLock::new(db.batch_processor())) };
 
         // Create the metadata column family
-        let meta_cf = db.column();
+        let m_c_g = db.column();
 
         // Create the data column family
-        let data_cf = db.column();
+        let d_c_g = db.column();
 
         // Create the erasure column family
-        let erasure_cf = db.column();
+        let e_c_g = db.column();
 
-        let erasure_meta_cf = db.column();
+        let e_m_c_g = db.column();
 
         // Create the orphans column family. An "orphan" is defined as
         // the head of a detached chain of slots, i.e. a slot with no
         // known parent
-        let orphans_cf = db.column();
+        let sgt_c_g = db.column();
 
         // setup erasure
         let session = Arc::new(expunge::Session::default());
@@ -142,11 +141,11 @@ impl BlockBufferPool {
 
         Ok(BlockBufferPool {
             db,
-            meta_cf,
-            data_cf,
-            erasure_cf,
-            erasure_meta_cf,
-            orphans_cf,
+            m_c_g,
+            d_c_g,
+            e_c_g,
+            e_m_c_g,
+            sgt_c_g,
             session,
             new_blobs_signals: vec![],
             batch_processor,
@@ -157,36 +156,36 @@ impl BlockBufferPool {
     pub fn open_by_message(
         ledger_path: &str,
     ) -> Result<(Self, Receiver<bool>, CompletedSlotsReceiver)> {
-        let mut blocktree = Self::open_ledger_file(ledger_path)?;
+        let mut block_buffer_pool = Self::open_ledger_file(ledger_path)?;
         let (signal_sender, signal_receiver) = sync_channel(1);
         let (completed_slots_sender, completed_slots_receiver) =
             sync_channel(MAX_COMPLETED_SLOTS_IN_CHANNEL);
-        blocktree.new_blobs_signals = vec![signal_sender];
-        blocktree.completed_slots_senders = vec![completed_slots_sender];
+        block_buffer_pool.new_blobs_signals = vec![signal_sender];
+        block_buffer_pool.completed_slots_senders = vec![completed_slots_sender];
 
-        Ok((blocktree, signal_receiver, completed_slots_receiver))
+        Ok((block_buffer_pool, signal_receiver, completed_slots_receiver))
     }
 
-    pub fn destruct(ledger_path: &str) -> Result<()> {
+    pub fn remove_ledger_file(ledger_path: &str) -> Result<()> {
         // Database::destroy() fails is the path doesn't exist
         fs::create_dir_all(ledger_path)?;
-        let path = std::path::Path::new(ledger_path).join(BLOCKTREE_DIRECTORY);
+        let path = std::path::Path::new(ledger_path).join(BLOCKBUFFERPOOL_DIR);
         Database::destroy(&path)
     }
 
     pub fn meta_info(&self, slot: u64) -> Result<Option<SlotMeta>> {
-        self.meta_cf.get(slot)
+        self.m_c_g.get(slot)
     }
 
     pub fn wipeout_meta_info(&self, slot: u64, set_index: u64) -> Result<Option<ErasureMeta>> {
-        self.erasure_meta_cf.get((slot, set_index))
+        self.e_m_c_g.get((slot, set_index))
     }
 
-    pub fn tramp(&self, slot: u64) -> Result<Option<bool>> {
-        self.orphans_cf.get(slot)
+    pub fn singleton_slot(&self, slot: u64) -> Result<Option<bool>> {
+        self.sgt_c_g.get(slot)
     }
 
-    pub fn registered_slit_repeater<'a>(&'a self, slot: u64) -> Result<RootedSlotIterator<'a>> {
+    pub fn based_slot_repeater<'a>(&'a self, slot: u64) -> Result<RootedSlotIterator<'a>> {
         RootedSlotIterator::new(slot, self)
     }
 
@@ -298,7 +297,7 @@ impl BlockBufferPool {
         let mut write_batch = batch_processor.batch()?;
 
         let new_blobs: Vec<_> = new_blobs.into_iter().collect();
-        let mut recovered_data = vec![];
+        let mut restored_data = vec![];
 
         let mut prev_inserted_blob_datas = HashMap::new();
         // A map from slot to a 2-tuple of metadata: (working copy, backup copy),
@@ -314,7 +313,7 @@ impl BlockBufferPool {
             erasure_meta_working_set
                 .entry((blob_slot, set_index))
                 .or_insert_with(|| {
-                    self.erasure_meta_cf
+                    self.e_m_c_g
                         .get((blob_slot, set_index))
                         .expect("Expect database get to succeed")
                         .unwrap_or_else(|| ErasureMeta::new(set_index))
@@ -340,7 +339,7 @@ impl BlockBufferPool {
                 None,
             )? {
                 for data_blob in data {
-                    recovered_data.push(data_blob);
+                    restored_data.push(data_blob);
                 }
 
                 for coding_blob in coding {
@@ -355,7 +354,7 @@ impl BlockBufferPool {
         }
 
         punctuate_info_obj_packet(
-            recovered_data.iter(),
+            restored_data.iter(),
             &db,
             &mut slot_meta_working_set,
             &mut erasure_meta_working_set,
@@ -407,7 +406,7 @@ impl BlockBufferPool {
                 let res = signal.try_send(slots);
                 if let Err(TrySendError::Full(_)) = res {
                     datapoint_error!(
-                        "blocktree_error",
+                        "block_buffer_pool_error",
                         (
                             "error",
                             "Unable to send newly completed slot because channel is full"
@@ -485,7 +484,7 @@ impl BlockBufferPool {
     }
 
     pub fn fetch_encrypting_obj_bytes(&self, slot: u64, index: u64) -> Result<Option<Vec<u8>>> {
-        self.erasure_cf.get_bytes((slot, index))
+        self.e_c_g.get_bytes((slot, index))
     }
 
     pub fn erase_encrypting_obj(&self, slot: u64, index: u64) -> Result<()> {
@@ -493,7 +492,7 @@ impl BlockBufferPool {
         let mut batch_processor = self.batch_processor.write().unwrap();
 
         let mut erasure_meta = self
-            .erasure_meta_cf
+            .e_m_c_g
             .get((slot, set_index))?
             .unwrap_or_else(|| ErasureMeta::new(set_index));
 
@@ -509,19 +508,19 @@ impl BlockBufferPool {
     }
 
     pub fn fetch_info_obj_bytes(&self, slot: u64, index: u64) -> Result<Option<Vec<u8>>> {
-        self.data_cf.get_bytes((slot, index))
+        self.d_c_g.get_bytes((slot, index))
     }
 
     /// For benchmarks, testing, and setup.
     /// Does no metadata tracking. Use with care.
     pub fn place_info_obj_bytes(&self, slot: u64, index: u64, bytes: &[u8]) -> Result<()> {
-        self.data_cf.put_bytes((slot, index), bytes)
+        self.d_c_g.put_bytes((slot, index), bytes)
     }
 
     /// For benchmarks, testing, and setup.
     /// Does no metadata tracking. Use with care.
     pub fn place_encrypting_obj_bytes_plain(&self, slot: u64, index: u64, bytes: &[u8]) -> Result<()> {
-        self.erasure_cf.put_bytes((slot, index), bytes)
+        self.e_c_g.put_bytes((slot, index), bytes)
     }
 
     /// this function will insert coding blobs and also automatically track erasure-related
@@ -531,7 +530,7 @@ impl BlockBufferPool {
         let mut batch_processor = self.batch_processor.write().unwrap();
 
         let mut erasure_meta = self
-            .erasure_meta_cf
+            .e_m_c_g
             .get((slot, set_index))?
             .unwrap_or_else(|| ErasureMeta::new(set_index));
 
@@ -542,7 +541,7 @@ impl BlockBufferPool {
 
         writebatch.put_bytes::<cf::Coding>((slot, index), bytes)?;
 
-        let recovered_data = {
+        let restored_data = {
             if let Some((data, coding)) = attempt_wipeout_restore(
                 &self.db,
                 &self.session,
@@ -572,7 +571,7 @@ impl BlockBufferPool {
         writebatch.put::<cf::ErasureMeta>((slot, set_index), &erasure_meta)?;
         batch_processor.write(writebatch)?;
         drop(batch_processor);
-        if let Some(data) = recovered_data {
+        if let Some(data) = restored_data {
             if !data.is_empty() {
                 self.punctuate_info_objs(&data)?;
             }
@@ -720,12 +719,12 @@ impl BlockBufferPool {
             //    can do this in parallel
             blockhash: Option<Hash>,
             // https://github.com/rust-rocksdb/rust-rocksdb/issues/234
-            //   rocksdb issue: the _blocktree member must be lower in the struct to prevent a crash
+            //   rocksdb issue: the _block_buffer_pool member must be lower in the struct to prevent a crash
             //   when the db_iterator member above is dropped.
-            //   _blocktree is unused, but dropping _blocktree results in a broken db_iterator
+            //   _block_buffer_pool is unused, but dropping _block_buffer_pool results in a broken db_iterator
             //   you have to hold the database open in order to iterate over it, and in order
             //   for db_iterator to be able to run Drop
-            //    _blocktree: BlockBufferPool,
+            //    _block_buffer_pool: BlockBufferPool,
             entries: VecDeque<Entry>,
         }
 
@@ -812,7 +811,7 @@ impl BlockBufferPool {
     }
 
     pub fn is_base(&self, slot: u64) -> bool {
-        if let Ok(Some(true)) = self.db.get::<cf::Root>(slot) {
+        if let Ok(Some(true)) = self.db.get::<cf::BaseColumn>(slot) {
             true
         } else {
             false
@@ -825,10 +824,10 @@ impl BlockBufferPool {
             let mut batch_processor = self.db.batch_processor();
             let mut write_batch = batch_processor.batch()?;
             if new_root == 0 {
-                write_batch.put::<cf::Root>(0, &true)?;
+                write_batch.put::<cf::BaseColumn>(0, &true)?;
             } else {
                 while current_slot != prev_root {
-                    write_batch.put::<cf::Root>(current_slot, &true)?;
+                    write_batch.put::<cf::BaseColumn>(current_slot, &true)?;
                     current_slot = self.meta_info(current_slot).unwrap().unwrap().parent_slot;
                 }
             }
@@ -980,12 +979,12 @@ fn validate_punctuate_info_obj<'a>(
 ) -> bool {
     let blob_slot = blob.slot();
     let parent_slot = blob.parent();
-    let meta_cf = db.column::<cf::SlotMeta>();
+    let m_c_g = db.column::<cf::SlotMeta>();
 
     // Check if we've already inserted the slot metadata for this blob's slot
     let entry = slot_meta_working_set.entry(blob_slot).or_insert_with(|| {
         // Store a 2-tuple of the metadata (working copy, backup copy)
-        if let Some(mut meta) = meta_cf
+        if let Some(mut meta) = m_c_g
             .get(blob_slot)
             .expect("Expect database get to succeed")
         {
@@ -994,7 +993,7 @@ fn validate_punctuate_info_obj<'a>(
             // during the chaining process, see the function search_slit_meta_in_stored_status()
             // for details. Slots that are orphans are missing a parent_slot, so we should
             // fill in the parent now that we know it.
-            if is_tramp(&meta) {
+            if is_singleton(&meta) {
                 meta.parent_slot = parent_slot;
             }
 
@@ -1027,12 +1026,12 @@ fn ought_to_punctuate_obj(
 ) -> bool {
     let blob_index = blob.index();
     let blob_slot = blob.slot();
-    let data_cf = db.column::<cf::Data>();
+    let d_c_g = db.column::<cf::Data>();
 
     // Check that the blob doesn't already exist
     if blob_index < slot.consumed
         || prev_inserted_blob_datas.contains_key(&(blob_slot, blob_index))
-        || data_cf
+        || d_c_g
             .get_bytes((blob_slot, blob_index))
             .map(|opt| opt.is_some())
             .unwrap_or(false)
@@ -1045,7 +1044,7 @@ fn ought_to_punctuate_obj(
     let last_index = slot.last_index;
     if blob_index >= last_index {
         datapoint_error!(
-            "blocktree_error",
+            "block_buffer_pool_error",
             (
                 "error",
                 format!(
@@ -1062,7 +1061,7 @@ fn ought_to_punctuate_obj(
     // less than our current received
     if blob.is_last_in_slot() && blob_index < slot.received {
         datapoint_error!(
-            "blocktree_error",
+            "block_buffer_pool_error",
             (
                 "error",
                 format!(
@@ -1143,7 +1142,7 @@ fn fetch_slit_successive_objs<'a>(
     max_blobs: Option<u64>,
 ) -> Result<Vec<Cow<'a, [u8]>>> {
     let mut blobs: Vec<Cow<[u8]>> = vec![];
-    let data_cf = db.column::<cf::Data>();
+    let d_c_g = db.column::<cf::Data>();
 
     loop {
         if Some(blobs.len() as u64) == max_blobs {
@@ -1152,7 +1151,7 @@ fn fetch_slit_successive_objs<'a>(
         // Try to find the next blob we're looking for in the prev_inserted_blob_datas
         if let Some(prev_blob_data) = prev_inserted_blob_datas.get(&(slot, current_index)) {
             blobs.push(Cow::Borrowed(*prev_blob_data));
-        } else if let Some(blob_data) = data_cf.get_bytes((slot, current_index))? {
+        } else if let Some(blob_data) = d_c_g.get_bytes((slot, current_index))? {
             // Try to find the next blob we're looking for in the database
             blobs.push(Cow::Owned(blob_data));
         } else {
@@ -1198,7 +1197,7 @@ fn process_catenating_for_slit(
 
     {
         let mut meta_mut = meta.borrow_mut();
-        let was_orphan_slot = meta_backup.is_some() && is_tramp(meta_backup.as_ref().unwrap());
+        let was_orphan_slot = meta_backup.is_some() && is_singleton(meta_backup.as_ref().unwrap());
 
         // If:
         // 1) This is a new slot
@@ -1220,7 +1219,7 @@ fn process_catenating_for_slit(
 
                 // If the parent of `slot` is a newly inserted orphan, insert it into the orphans
                 // column family
-                if is_tramp(&RefCell::borrow(&*prev_slot_meta)) {
+                if is_singleton(&RefCell::borrow(&*prev_slot_meta)) {
                     write_batch.put::<cf::Orphans>(prev_slot, &true)?;
                 }
             }
@@ -1296,7 +1295,7 @@ where
     Ok(())
 }
 
-fn is_tramp(meta: &SlotMeta) -> bool {
+fn is_singleton(meta: &SlotMeta) -> bool {
     // If we have no parent, then this is the head of a detached chain of
     // slots
     !meta.is_parent_set()
@@ -1336,7 +1335,7 @@ fn attempt_wipeout_restore(
 
     let submit_metrics = |attempted: bool, status: String| {
         datapoint_info!(
-            "blocktree-erasure",
+            "block_buffer_pool-erasure",
             ("slot", slot as i64, i64),
             ("start_index", start_index as i64, i64),
             ("end_index", data_end_index as i64, i64),
@@ -1434,8 +1433,8 @@ fn restore(
 
     let start_idx = erasure_meta.start_index();
     let size = erasure_meta.size();
-    let data_cf = db.column::<cf::Data>();
-    let erasure_cf = db.column::<cf::Coding>();
+    let d_c_g = db.column::<cf::Data>();
+    let e_c_g = db.column::<cf::Coding>();
 
     let (data_end_idx, coding_end_idx) = erasure_meta.end_indexes();
 
@@ -1446,7 +1445,7 @@ fn restore(
         if erasure_meta.is_coding_present(i) {
             let mut blob_bytes = match new_coding {
                 Some((new_coding_index, bytes)) if new_coding_index == i => bytes.to_vec(),
-                _ => erasure_cf
+                _ => e_c_g
                     .get_bytes((slot, i))?
                     .expect("ErasureMeta must have no false positives"),
             };
@@ -1469,7 +1468,7 @@ fn restore(
         if erasure_meta.is_data_present(i) {
             let mut blob_bytes = match prev_inserted_blob_datas.get(&(slot, i)) {
                 Some(bytes) => bytes.to_vec(),
-                None => data_cf
+                None => d_c_g
                     .get_bytes((slot, i))?
                     .expect("erasure_meta must have no false positives"),
             };
@@ -1485,7 +1484,7 @@ fn restore(
         }
     }
 
-    let (recovered_data, recovered_coding) =
+    let (restored_data, recovered_coding) =
         session.reconstruct_blobs(&mut blobs, present, size, start_idx, slot)?;
 
     trace!(
@@ -1495,7 +1494,7 @@ fn restore(
         data_end_idx
     );
 
-    Ok((recovered_data, recovered_coding))
+    Ok((restored_data, recovered_coding))
 }
 
 fn deserialize_objs<I>(blob_datas: &[I]) -> Vec<Entry>
@@ -1532,13 +1531,13 @@ fn slit_owns_renewals(slot_meta: &SlotMeta, slot_meta_backup: &Option<SlotMeta>)
 // Returns the blockhash that can be used to append entries with.
 pub fn generate_new_bill(ledger_path: &str, genesis_block: &GenesisBlock) -> Result<Hash> {
     let ticks_per_slot = genesis_block.ticks_per_slot;
-    BlockBufferPool::destruct(ledger_path)?;
+    BlockBufferPool::remove_ledger_file(ledger_path)?;
     genesis_block.write(&ledger_path)?;
 
     // Fill slot 0 with ticks that link back to the genesis_block to bootstrap the ledger.
-    let blocktree = BlockBufferPool::open_ledger_file(ledger_path)?;
+    let block_buffer_pool = BlockBufferPool::open_ledger_file(ledger_path)?;
     let entries = crate::entry_info::create_ticks(ticks_per_slot, genesis_block.hash());
-    blocktree.record_items(0, 0, 0, ticks_per_slot, &entries)?;
+    block_buffer_pool.record_items(0, 0, 0, ticks_per_slot, &entries)?;
 
     Ok(entries.last().unwrap().hash)
 }
@@ -1547,7 +1546,7 @@ pub fn source<'a, I>(ledger_path: &str, keypair: &Keypair, entries: I) -> Result
 where
     I: IntoIterator<Item = &'a Entry>,
 {
-    let blocktree = BlockBufferPool::open_ledger_file(ledger_path)?;
+    let block_buffer_pool = BlockBufferPool::open_ledger_file(ledger_path)?;
 
     // TODO sign these blobs with keypair
     let blobs: Vec<_> = entries
@@ -1562,7 +1561,7 @@ where
         })
         .collect();
 
-    blocktree.record_source_objs(&blobs[..])?;
+    block_buffer_pool.record_source_objs(&blobs[..])?;
     Ok(())
 }
 
@@ -1611,22 +1610,22 @@ pub fn create_new_tmp_ledger(name: &str, genesis_block: &GenesisBlock) -> (Strin
 }
 
 #[macro_export]
-macro_rules! tmp_copy_blocktree {
+macro_rules! tmp_copy_block_buffer {
     ($from:expr) => {
-        tmp_copy_blocktree($from, tmp_ledger_name!())
+        tmp_copy_block_buffer($from, tmp_ledger_name!())
     };
 }
 
-pub fn tmp_copy_blocktree(from: &str, name: &str) -> String {
+pub fn tmp_copy_block_buffer(from: &str, name: &str) -> String {
     let path = fetch_interim_bill_route(name);
 
-    let blocktree = BlockBufferPool::open_ledger_file(from).unwrap();
-    let blobs = blocktree.extract_bill_objs();
+    let block_buffer_pool = BlockBufferPool::open_ledger_file(from).unwrap();
+    let blobs = block_buffer_pool.extract_bill_objs();
     let genesis_block = GenesisBlock::load(from).unwrap();
 
-    BlockBufferPool::destruct(&path).expect("Expected successful database destruction");
-    let blocktree = BlockBufferPool::open_ledger_file(&path).unwrap();
-    blocktree.record_objs(blobs).unwrap();
+    BlockBufferPool::remove_ledger_file(&path).expect("Expected successful database destruction");
+    let block_buffer_pool = BlockBufferPool::open_ledger_file(&path).unwrap();
+    block_buffer_pool.record_objs(blobs).unwrap();
     genesis_block.write(&path).unwrap();
 
     path
@@ -1728,7 +1727,7 @@ pub mod tests {
                 &ledger.fetch_slit_items(num_slots + 1, 0, None).unwrap()[..]
             );
         }
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -1738,9 +1737,9 @@ pub mod tests {
 
         // Test meta column family
         let meta = SlotMeta::new(0, 1);
-        ledger.meta_cf.put(0, &meta).unwrap();
+        ledger.m_c_g.put(0, &meta).unwrap();
         let result = ledger
-            .meta_cf
+            .m_c_g
             .get(0)
             .unwrap()
             .expect("Expected meta object to exist");
@@ -1750,10 +1749,10 @@ pub mod tests {
         // Test erasure column family
         let erasure = vec![1u8; 16];
         let erasure_key = (0, 0);
-        ledger.erasure_cf.put_bytes(erasure_key, &erasure).unwrap();
+        ledger.e_c_g.put_bytes(erasure_key, &erasure).unwrap();
 
         let result = ledger
-            .erasure_cf
+            .e_c_g
             .get_bytes(erasure_key)
             .unwrap()
             .expect("Expected erasure object to exist");
@@ -1763,10 +1762,10 @@ pub mod tests {
         // Test data column family
         let data = vec![2u8; 16];
         let data_key = (0, 0);
-        ledger.data_cf.put_bytes(data_key, &data).unwrap();
+        ledger.d_c_g.put_bytes(data_key, &data).unwrap();
 
         let result = ledger
-            .data_cf
+            .d_c_g
             .get_bytes(data_key)
             .unwrap()
             .expect("Expected data object to exist");
@@ -1775,7 +1774,7 @@ pub mod tests {
 
         // Destroying database without closing it first is undefined behavior
         drop(ledger);
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -1840,7 +1839,7 @@ pub mod tests {
 
         // Destroying database without closing it first is undefined behavior
         drop(ledger);
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -1887,7 +1886,7 @@ pub mod tests {
 
         // Destroying database without closing it first is undefined behavior
         drop(ledger);
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -1920,7 +1919,7 @@ pub mod tests {
 
         // Destroying database without closing it first is undefined behavior
         drop(ledger);
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -1932,9 +1931,9 @@ pub mod tests {
     #[test]
     pub fn test_iteration_order() {
         let slot = 0;
-        let blocktree_path = fetch_interim_bill_route("test_iteration_order");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_iteration_order");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Write entries
             let num_entries = 8;
@@ -1946,11 +1945,11 @@ pub mod tests {
                 b.set_slot(0);
             }
 
-            blocktree
+            block_buffer_pool
                 .record_objs(&blobs)
                 .expect("Expected successful write of blobs");
 
-            let mut db_iterator = blocktree
+            let mut db_iterator = block_buffer_pool
                 .db
                 .cursor::<cf::Data>()
                 .expect("Expected to be able to open database iterator");
@@ -1965,14 +1964,14 @@ pub mod tests {
                 db_iterator.next();
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_slot_entries1() {
-        let blocktree_path = fetch_interim_bill_route("test_get_slot_entries1");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_get_slot_entries1");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let entries = make_tiny_test_entries(8);
             let mut blobs = entries.clone().to_single_entry_blobs();
             for (i, b) in blobs.iter_mut().enumerate() {
@@ -1983,28 +1982,28 @@ pub mod tests {
                     b.set_index(8 + i as u64);
                 }
             }
-            blocktree
+            block_buffer_pool
                 .record_objs(&blobs)
                 .expect("Expected successful write of blobs");
 
             assert_eq!(
-                blocktree.fetch_slit_items(1, 2, None).unwrap()[..],
+                block_buffer_pool.fetch_slit_items(1, 2, None).unwrap()[..],
                 entries[2..4],
             );
 
             assert_eq!(
-                blocktree.fetch_slit_items(1, 12, None).unwrap()[..],
+                block_buffer_pool.fetch_slit_items(1, 12, None).unwrap()[..],
                 entries[4..],
             );
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_slot_entries2() {
-        let blocktree_path = fetch_interim_bill_route("test_get_slot_entries2");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_get_slot_entries2");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Write entries
             let num_slots = 5 as u64;
@@ -2018,24 +2017,24 @@ pub mod tests {
                     b.set_slot(slot as u64);
                     index += 1;
                 }
-                blocktree
+                block_buffer_pool
                     .record_objs(&blobs)
                     .expect("Expected successful write of blobs");
                 assert_eq!(
-                    blocktree.fetch_slit_items(slot, index - 1, None).unwrap(),
+                    block_buffer_pool.fetch_slit_items(slot, index - 1, None).unwrap(),
                     vec![last_entry],
                 );
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_slot_entries3() {
         // Test inserting/fetching blobs which contain multiple entries per blob
-        let blocktree_path = fetch_interim_bill_route("test_get_slot_entries3");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_get_slot_entries3");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let num_slots = 5 as u64;
             let blobs_per_slot = 5 as u64;
             let entry_serialized_size =
@@ -2054,20 +2053,20 @@ pub mod tests {
                     b.set_slot(slot as u64);
                     index += 1;
                 }
-                blocktree
+                block_buffer_pool
                     .record_objs(&blobs)
                     .expect("Expected successful write of blobs");
-                assert_eq!(blocktree.fetch_slit_items(slot, 0, None).unwrap(), entries,);
+                assert_eq!(block_buffer_pool.fetch_slit_items(slot, 0, None).unwrap(), entries,);
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_insert_data_blobs_consecutive() {
-        let blocktree_path = fetch_interim_bill_route("test_insert_data_blobs_consecutive");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_insert_data_blobs_consecutive");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             for i in 0..4 {
                 let slot = i;
                 let parent_slot = if i == 0 { 0 } else { i - 1 };
@@ -2075,13 +2074,13 @@ pub mod tests {
                 let num_entries = 21 as u64 * (i + 1);
                 let (blobs, original_entries) = make_slot_entries(slot, parent_slot, num_entries);
 
-                blocktree
+                block_buffer_pool
                     .record_objs(blobs.iter().skip(1).step_by(2))
                     .unwrap();
 
-                assert_eq!(blocktree.fetch_slit_items(slot, 0, None).unwrap(), vec![]);
+                assert_eq!(block_buffer_pool.fetch_slit_items(slot, 0, None).unwrap(), vec![]);
 
-                let meta = blocktree.meta_info(slot).unwrap().unwrap();
+                let meta = block_buffer_pool.meta_info(slot).unwrap().unwrap();
                 if num_entries % 2 == 0 {
                     assert_eq!(meta.received, num_entries);
                 } else {
@@ -2096,14 +2095,14 @@ pub mod tests {
                     assert_eq!(meta.last_index, std::u64::MAX);
                 }
 
-                blocktree.record_objs(blobs.iter().step_by(2)).unwrap();
+                block_buffer_pool.record_objs(blobs.iter().step_by(2)).unwrap();
 
                 assert_eq!(
-                    blocktree.fetch_slit_items(slot, 0, None).unwrap(),
+                    block_buffer_pool.fetch_slit_items(slot, 0, None).unwrap(),
                     original_entries,
                 );
 
-                let meta = blocktree.meta_info(slot).unwrap().unwrap();
+                let meta = block_buffer_pool.meta_info(slot).unwrap().unwrap();
                 assert_eq!(meta.received, num_entries);
                 assert_eq!(meta.consumed, num_entries);
                 assert_eq!(meta.parent_slot, parent_slot);
@@ -2111,15 +2110,15 @@ pub mod tests {
             }
         }
 
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_insert_data_blobs_duplicate() {
         // Create RocksDb ledger
-        let blocktree_path = fetch_interim_bill_route("test_insert_data_blobs_duplicate");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_insert_data_blobs_duplicate");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Make duplicate entries and blobs
             let num_duplicates = 2;
@@ -2134,7 +2133,7 @@ pub mod tests {
                 (entries, blobs)
             };
 
-            blocktree
+            block_buffer_pool
                 .record_objs(
                     blobs
                         .iter()
@@ -2143,9 +2142,9 @@ pub mod tests {
                 )
                 .unwrap();
 
-            assert_eq!(blocktree.fetch_slit_items(0, 0, None).unwrap(), vec![]);
+            assert_eq!(block_buffer_pool.fetch_slit_items(0, 0, None).unwrap(), vec![]);
 
-            blocktree
+            block_buffer_pool
                 .record_objs(blobs.iter().step_by(num_duplicates as usize * 2))
                 .unwrap();
 
@@ -2154,15 +2153,15 @@ pub mod tests {
                 .step_by(num_duplicates as usize)
                 .collect();
 
-            assert_eq!(blocktree.fetch_slit_items(0, 0, None).unwrap(), expected,);
+            assert_eq!(block_buffer_pool.fetch_slit_items(0, 0, None).unwrap(), expected,);
 
-            let meta = blocktree.meta_info(0).unwrap().unwrap();
+            let meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
             assert_eq!(meta.consumed, num_unique_entries);
             assert_eq!(meta.received, num_unique_entries);
             assert_eq!(meta.parent_slot, 0);
             assert_eq!(meta.last_index, num_unique_entries - 1);
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -2181,7 +2180,7 @@ pub mod tests {
             assert_eq!(entries, read_entries);
         }
 
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
     #[test]
     pub fn test_entry_iterator_up_to_consumed() {
@@ -2215,7 +2214,7 @@ pub mod tests {
             assert_eq!(entries[..entries.len() - 2].to_vec(), read_entries);
         }
 
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -2295,7 +2294,7 @@ pub mod tests {
 
         // Destroying database without closing it first is undefined behavior
         drop(ledger);
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -2392,20 +2391,20 @@ pub mod tests {
 
     #[test]
     pub fn test_handle_chaining_basic() {
-        let blocktree_path = fetch_interim_bill_route("test_handle_chaining_basic");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_handle_chaining_basic");
         {
             let entries_per_slot = 2;
             let num_slots = 3;
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Construct the blobs
             let (blobs, _) = make_many_slot_entries(0, num_slots, entries_per_slot);
 
             // 1) Write to the first slot
-            blocktree
+            block_buffer_pool
                 .record_objs(&blobs[entries_per_slot as usize..2 * entries_per_slot as usize])
                 .unwrap();
-            let s1 = blocktree.meta_info(1).unwrap().unwrap();
+            let s1 = block_buffer_pool.meta_info(1).unwrap().unwrap();
             assert!(s1.next_slots.is_empty());
             // Slot 1 is not trunk because slot 0 hasn't been inserted yet
             assert!(!s1.is_connected);
@@ -2413,10 +2412,10 @@ pub mod tests {
             assert_eq!(s1.last_index, entries_per_slot - 1);
 
             // 2) Write to the second slot
-            blocktree
+            block_buffer_pool
                 .record_objs(&blobs[2 * entries_per_slot as usize..3 * entries_per_slot as usize])
                 .unwrap();
-            let s2 = blocktree.meta_info(2).unwrap().unwrap();
+            let s2 = block_buffer_pool.meta_info(2).unwrap().unwrap();
             assert!(s2.next_slots.is_empty());
             // Slot 2 is not trunk because slot 0 hasn't been inserted yet
             assert!(!s2.is_connected);
@@ -2425,7 +2424,7 @@ pub mod tests {
 
             // Check the first slot again, it should chain to the second slot,
             // but still isn't part of the trunk
-            let s1 = blocktree.meta_info(1).unwrap().unwrap();
+            let s1 = block_buffer_pool.meta_info(1).unwrap().unwrap();
             assert_eq!(s1.next_slots, vec![2]);
             assert!(!s1.is_connected);
             assert_eq!(s1.parent_slot, 0);
@@ -2433,11 +2432,11 @@ pub mod tests {
 
             // 3) Write to the zeroth slot, check that every slot
             // is now part of the trunk
-            blocktree
+            block_buffer_pool
                 .record_objs(&blobs[0..entries_per_slot as usize])
                 .unwrap();
             for i in 0..3 {
-                let s = blocktree.meta_info(i).unwrap().unwrap();
+                let s = block_buffer_pool.meta_info(i).unwrap().unwrap();
                 // The last slot will not chain to any other slots
                 if i != 2 {
                     assert_eq!(s.next_slots, vec![i + 1]);
@@ -2451,14 +2450,14 @@ pub mod tests {
                 assert!(s.is_connected);
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_handle_chaining_missing_slots() {
-        let blocktree_path = fetch_interim_bill_route("test_handle_chaining_missing_slots");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_handle_chaining_missing_slots");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let num_slots = 30;
             let entries_per_slot = 2;
 
@@ -2483,7 +2482,7 @@ pub mod tests {
             }
 
             // Write the blobs for every other slot
-            blocktree.record_objs(&slots).unwrap();
+            block_buffer_pool.record_objs(&slots).unwrap();
 
             // Check metadata
             for i in 0..num_slots {
@@ -2492,7 +2491,7 @@ pub mod tests {
                 // However, if it's a slot we haven't inserted, aka one of the gaps, then one of the
                 // slots we just inserted will chain to that gap, so next_slots for that orphan slot
                 // won't be empty, but the parent slot is unknown so should equal std::u64::MAX.
-                let s = blocktree.meta_info(i as u64).unwrap().unwrap();
+                let s = block_buffer_pool.meta_info(i as u64).unwrap().unwrap();
                 if i % 2 == 0 {
                     assert_eq!(s.next_slots, vec![i as u64 + 1]);
                     assert_eq!(s.parent_slot, std::u64::MAX);
@@ -2509,12 +2508,12 @@ pub mod tests {
             }
 
             // Write the blobs for the other half of the slots that we didn't insert earlier
-            blocktree.record_objs(&missing_slots[..]).unwrap();
+            block_buffer_pool.record_objs(&missing_slots[..]).unwrap();
 
             for i in 0..num_slots {
                 // Check that all the slots chain correctly once the missing slots
                 // have been filled
-                let s = blocktree.meta_info(i as u64).unwrap().unwrap();
+                let s = block_buffer_pool.meta_info(i as u64).unwrap().unwrap();
                 if i != num_slots - 1 {
                     assert_eq!(s.next_slots, vec![i as u64 + 1]);
                 } else {
@@ -2531,14 +2530,14 @@ pub mod tests {
             }
         }
 
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_forward_chaining_is_connected() {
-        let blocktree_path = fetch_interim_bill_route("test_forward_chaining_is_connected");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_forward_chaining_is_connected");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let num_slots = 15;
             let entries_per_slot = 2;
             assert!(entries_per_slot > 1);
@@ -2548,11 +2547,11 @@ pub mod tests {
             // Write the blobs such that every 3rd slot has a gap in the beginning
             for (slot, slot_ticks) in blobs.chunks(entries_per_slot as usize).enumerate() {
                 if slot % 3 == 0 {
-                    blocktree
+                    block_buffer_pool
                         .record_objs(&slot_ticks[1..entries_per_slot as usize])
                         .unwrap();
                 } else {
-                    blocktree
+                    block_buffer_pool
                         .record_objs(&slot_ticks[..entries_per_slot as usize])
                         .unwrap();
                 }
@@ -2560,7 +2559,7 @@ pub mod tests {
 
             // Check metadata
             for i in 0..num_slots {
-                let s = blocktree.meta_info(i as u64).unwrap().unwrap();
+                let s = block_buffer_pool.meta_info(i as u64).unwrap().unwrap();
                 // The last slot will not chain to any other slots
                 if i as u64 != num_slots - 1 {
                     assert_eq!(s.next_slots, vec![i as u64 + 1]);
@@ -2588,10 +2587,10 @@ pub mod tests {
             // slot_index + 3 become part of the trunk
             for (slot_index, slot_ticks) in blobs.chunks(entries_per_slot as usize).enumerate() {
                 if slot_index % 3 == 0 {
-                    blocktree.record_objs(&slot_ticks[0..1]).unwrap();
+                    block_buffer_pool.record_objs(&slot_ticks[0..1]).unwrap();
 
                     for i in 0..num_slots {
-                        let s = blocktree.meta_info(i as u64).unwrap().unwrap();
+                        let s = block_buffer_pool.meta_info(i as u64).unwrap().unwrap();
                         if i != num_slots - 1 {
                             assert_eq!(s.next_slots, vec![i as u64 + 1]);
                         } else {
@@ -2614,14 +2613,14 @@ pub mod tests {
                 }
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_chaining_tree() {
-        let blocktree_path = fetch_interim_bill_route("test_chaining_tree");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_chaining_tree");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let num_tree_levels = 6;
             assert!(num_tree_levels > 1);
             let branching_factor: u64 = 4;
@@ -2658,7 +2657,7 @@ pub mod tests {
                     .cloned()
                     .map(|blob| Arc::new(RwLock::new(blob)))
                     .collect();
-                let mut coding_generator = CodingGenerator::new(Arc::clone(&blocktree.session));
+                let mut coding_generator = CodingGenerator::new(Arc::clone(&block_buffer_pool.session));
                 let coding_blobs = coding_generator.next(&shared_blobs);
                 assert_eq!(coding_blobs.len(), NUM_CODING);
 
@@ -2666,11 +2665,11 @@ pub mod tests {
 
                 // Randomly pick whether to insert erasure or coding blobs first
                 if rng.gen_bool(0.5) {
-                    blocktree.record_objs(slot_blobs).unwrap();
-                    blocktree.place_ample_encrypting_obj_bytes(&coding_blobs).unwrap();
+                    block_buffer_pool.record_objs(slot_blobs).unwrap();
+                    block_buffer_pool.place_ample_encrypting_obj_bytes(&coding_blobs).unwrap();
                 } else {
-                    blocktree.place_ample_encrypting_obj_bytes(&coding_blobs).unwrap();
-                    blocktree.record_objs(slot_blobs).unwrap();
+                    block_buffer_pool.place_ample_encrypting_obj_bytes(&coding_blobs).unwrap();
+                    block_buffer_pool.record_objs(slot_blobs).unwrap();
                 }
             }
 
@@ -2678,7 +2677,7 @@ pub mod tests {
             let last_level =
                 (branching_factor.pow(num_tree_levels - 1) - 1) / (branching_factor - 1);
             for slot in 0..num_slots {
-                let slot_meta = blocktree.meta_info(slot).unwrap().unwrap();
+                let slot_meta = block_buffer_pool.meta_info(slot).unwrap().unwrap();
                 assert_eq!(slot_meta.consumed, entries_per_slot);
                 assert_eq!(slot_meta.received, entries_per_slot);
                 assert!(slot_meta.is_connected);
@@ -2711,54 +2710,54 @@ pub mod tests {
             }
 
             // No orphan slots should exist
-            assert!(blocktree.orphans_cf.is_empty().unwrap())
+            assert!(block_buffer_pool.sgt_c_g.is_empty().unwrap())
         }
 
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_slots_since() {
-        let blocktree_path = fetch_interim_bill_route("test_get_slots_since");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_get_slots_since");
 
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Slot doesn't exist
-            assert!(blocktree.fetch_slits_from(&vec![0]).unwrap().is_empty());
+            assert!(block_buffer_pool.fetch_slits_from(&vec![0]).unwrap().is_empty());
 
             let mut meta0 = SlotMeta::new(0, 0);
-            blocktree.meta_cf.put(0, &meta0).unwrap();
+            block_buffer_pool.m_c_g.put(0, &meta0).unwrap();
 
             // Slot exists, chains to nothing
             let expected: HashMap<u64, Vec<u64>> =
                 HashMap::from_iter(vec![(0, vec![])].into_iter());
-            assert_eq!(blocktree.fetch_slits_from(&vec![0]).unwrap(), expected);
+            assert_eq!(block_buffer_pool.fetch_slits_from(&vec![0]).unwrap(), expected);
             meta0.next_slots = vec![1, 2];
-            blocktree.meta_cf.put(0, &meta0).unwrap();
+            block_buffer_pool.m_c_g.put(0, &meta0).unwrap();
 
             // Slot exists, chains to some other slots
             let expected: HashMap<u64, Vec<u64>> =
                 HashMap::from_iter(vec![(0, vec![1, 2])].into_iter());
-            assert_eq!(blocktree.fetch_slits_from(&vec![0]).unwrap(), expected);
-            assert_eq!(blocktree.fetch_slits_from(&vec![0, 1]).unwrap(), expected);
+            assert_eq!(block_buffer_pool.fetch_slits_from(&vec![0]).unwrap(), expected);
+            assert_eq!(block_buffer_pool.fetch_slits_from(&vec![0, 1]).unwrap(), expected);
 
             let mut meta3 = SlotMeta::new(3, 1);
             meta3.next_slots = vec![10, 5];
-            blocktree.meta_cf.put(3, &meta3).unwrap();
+            block_buffer_pool.m_c_g.put(3, &meta3).unwrap();
             let expected: HashMap<u64, Vec<u64>> =
                 HashMap::from_iter(vec![(0, vec![1, 2]), (3, vec![10, 5])].into_iter());
-            assert_eq!(blocktree.fetch_slits_from(&vec![0, 1, 3]).unwrap(), expected);
+            assert_eq!(block_buffer_pool.fetch_slits_from(&vec![0, 1, 3]).unwrap(), expected);
         }
 
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_orphans() {
-        let blocktree_path = fetch_interim_bill_route("test_orphans");
+        let block_buffer_pool_path = fetch_interim_bill_route("test_orphans");
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Create blobs and entries
             let entries_per_slot = 1;
@@ -2766,55 +2765,55 @@ pub mod tests {
 
             // Write slot 2, which chains to slot 1. We're missing slot 0,
             // so slot 1 is the orphan
-            blocktree.record_objs(once(&blobs[2])).unwrap();
-            let meta = blocktree
+            block_buffer_pool.record_objs(once(&blobs[2])).unwrap();
+            let meta = block_buffer_pool
                 .meta_info(1)
                 .expect("Expect database get to succeed")
                 .unwrap();
-            assert!(is_tramp(&meta));
-            assert_eq!(blocktree.fetch_tramps(None), vec![1]);
+            assert!(is_singleton(&meta));
+            assert_eq!(block_buffer_pool.fetch_tramps(None), vec![1]);
 
             // Write slot 1 which chains to slot 0, so now slot 0 is the
             // orphan, and slot 1 is no longer the orphan.
-            blocktree.record_objs(once(&blobs[1])).unwrap();
-            let meta = blocktree
+            block_buffer_pool.record_objs(once(&blobs[1])).unwrap();
+            let meta = block_buffer_pool
                 .meta_info(1)
                 .expect("Expect database get to succeed")
                 .unwrap();
-            assert!(!is_tramp(&meta));
-            let meta = blocktree
+            assert!(!is_singleton(&meta));
+            let meta = block_buffer_pool
                 .meta_info(0)
                 .expect("Expect database get to succeed")
                 .unwrap();
-            assert!(is_tramp(&meta));
-            assert_eq!(blocktree.fetch_tramps(None), vec![0]);
+            assert!(is_singleton(&meta));
+            assert_eq!(block_buffer_pool.fetch_tramps(None), vec![0]);
 
             // Write some slot that also chains to existing slots and orphan,
             // nothing should change
             let blob4 = &make_slot_entries(4, 0, 1).0[0];
             let blob5 = &make_slot_entries(5, 1, 1).0[0];
-            blocktree.record_objs(vec![blob4, blob5]).unwrap();
-            assert_eq!(blocktree.fetch_tramps(None), vec![0]);
+            block_buffer_pool.record_objs(vec![blob4, blob5]).unwrap();
+            assert_eq!(block_buffer_pool.fetch_tramps(None), vec![0]);
 
             // Write zeroth slot, no more orphans
-            blocktree.record_objs(once(&blobs[0])).unwrap();
+            block_buffer_pool.record_objs(once(&blobs[0])).unwrap();
             for i in 0..3 {
-                let meta = blocktree
+                let meta = block_buffer_pool
                     .meta_info(i)
                     .expect("Expect database get to succeed")
                     .unwrap();
-                assert!(!is_tramp(&meta));
+                assert!(!is_singleton(&meta));
             }
             // Orphans cf is empty
-            assert!(blocktree.orphans_cf.is_empty().unwrap())
+            assert!(block_buffer_pool.sgt_c_g.is_empty().unwrap())
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     fn test_insert_data_blobs_slots(name: &str, should_bulk_write: bool) {
-        let blocktree_path = fetch_interim_bill_route(name);
+        let block_buffer_pool_path = fetch_interim_bill_route(name);
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Create blobs and entries
             let num_entries = 20 as u64;
@@ -2837,21 +2836,21 @@ pub mod tests {
 
             // Write blobs to the database
             if should_bulk_write {
-                blocktree.record_objs(blobs.iter()).unwrap();
+                block_buffer_pool.record_objs(blobs.iter()).unwrap();
             } else {
                 for i in 0..num_entries {
                     let i = i as usize;
-                    blocktree.record_objs(&blobs[i..i + 1]).unwrap();
+                    block_buffer_pool.record_objs(&blobs[i..i + 1]).unwrap();
                 }
             }
 
             for i in 0..num_entries - 1 {
                 assert_eq!(
-                    blocktree.fetch_slit_items(i, i, None).unwrap()[0],
+                    block_buffer_pool.fetch_slit_items(i, i, None).unwrap()[0],
                     entries[i as usize]
                 );
 
-                let meta = blocktree.meta_info(i).unwrap().unwrap();
+                let meta = block_buffer_pool.meta_info(i).unwrap().unwrap();
                 assert_eq!(meta.received, i + 1);
                 assert_eq!(meta.last_index, i);
                 if i != 0 {
@@ -2863,14 +2862,14 @@ pub mod tests {
                 }
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_find_missing_data_indexes() {
         let slot = 0;
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
         // Write entries
         let gap = 10;
@@ -2881,7 +2880,7 @@ pub mod tests {
             b.set_index(i as u64 * gap);
             b.set_slot(slot);
         }
-        blocktree.record_objs(&blobs).unwrap();
+        block_buffer_pool.record_objs(&blobs).unwrap();
 
         // Index of the first blob is 0
         // Index of the second blob is "gap"
@@ -2889,27 +2888,27 @@ pub mod tests {
         // range of [0, gap)
         let expected: Vec<u64> = (1..gap).collect();
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 0, gap, gap as usize),
+            block_buffer_pool.search_absent_info_indices(slot, 0, gap, gap as usize),
             expected
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 1, gap, (gap - 1) as usize),
+            block_buffer_pool.search_absent_info_indices(slot, 1, gap, (gap - 1) as usize),
             expected,
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 0, gap - 1, (gap - 1) as usize),
+            block_buffer_pool.search_absent_info_indices(slot, 0, gap - 1, (gap - 1) as usize),
             &expected[..expected.len() - 1],
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, gap - 2, gap, gap as usize),
+            block_buffer_pool.search_absent_info_indices(slot, gap - 2, gap, gap as usize),
             vec![gap - 2, gap - 1],
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, gap - 2, gap, 1),
+            block_buffer_pool.search_absent_info_indices(slot, gap - 2, gap, 1),
             vec![gap - 2],
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 0, gap, 1),
+            block_buffer_pool.search_absent_info_indices(slot, 0, gap, 1),
             vec![1],
         );
 
@@ -2917,11 +2916,11 @@ pub mod tests {
         let mut expected: Vec<u64> = (1..gap).collect();
         expected.push(gap + 1);
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 0, gap + 2, (gap + 2) as usize),
+            block_buffer_pool.search_absent_info_indices(slot, 0, gap + 2, (gap + 2) as usize),
             expected,
         );
         assert_eq!(
-            blocktree.search_absent_info_indices(slot, 0, gap + 2, (gap - 1) as usize),
+            block_buffer_pool.search_absent_info_indices(slot, 0, gap + 2, (gap - 1) as usize),
             &expected[..expected.len() - 1],
         );
 
@@ -2935,7 +2934,7 @@ pub mod tests {
                     })
                     .collect();
                 assert_eq!(
-                    blocktree.search_absent_info_indices(
+                    block_buffer_pool.search_absent_info_indices(
                         slot,
                         j * gap,
                         i * gap,
@@ -2946,23 +2945,23 @@ pub mod tests {
             }
         }
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_find_missing_data_indexes_sanity() {
         let slot = 0;
 
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
         // Early exit conditions
         let empty: Vec<u64> = vec![];
-        assert_eq!(blocktree.search_absent_info_indices(slot, 0, 0, 1), empty);
-        assert_eq!(blocktree.search_absent_info_indices(slot, 5, 5, 1), empty);
-        assert_eq!(blocktree.search_absent_info_indices(slot, 4, 3, 1), empty);
-        assert_eq!(blocktree.search_absent_info_indices(slot, 1, 2, 0), empty);
+        assert_eq!(block_buffer_pool.search_absent_info_indices(slot, 0, 0, 1), empty);
+        assert_eq!(block_buffer_pool.search_absent_info_indices(slot, 5, 5, 1), empty);
+        assert_eq!(block_buffer_pool.search_absent_info_indices(slot, 4, 3, 1), empty);
+        assert_eq!(block_buffer_pool.search_absent_info_indices(slot, 1, 2, 0), empty);
 
         let mut blobs = make_tiny_test_entries(2).to_single_entry_blobs();
 
@@ -2973,7 +2972,7 @@ pub mod tests {
         blobs[1].set_index(OTHER);
 
         // Insert one blob at index = first_index
-        blocktree.record_objs(&blobs).unwrap();
+        block_buffer_pool.record_objs(&blobs).unwrap();
 
         const STARTS: u64 = OTHER * 2;
         const END: u64 = OTHER * 3;
@@ -2982,7 +2981,7 @@ pub mod tests {
         // given the input range of [i, first_index], the missing indexes should be
         // [i, first_index - 1]
         for start in 0..STARTS {
-            let result = blocktree.search_absent_info_indices(
+            let result = block_buffer_pool.search_absent_info_indices(
                 slot, start, // start
                 END,   //end
                 MAX,   //max
@@ -2991,15 +2990,15 @@ pub mod tests {
             assert_eq!(result, expected);
         }
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_no_missing_blob_indexes() {
         let slot = 0;
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
         // Write entries
         let num_entries = 10;
@@ -3009,86 +3008,86 @@ pub mod tests {
 
         let blob_locks: Vec<_> = shared_blobs.iter().map(|b| b.read().unwrap()).collect();
         let blobs: Vec<&Blob> = blob_locks.iter().map(|b| &**b).collect();
-        blocktree.record_objs(blobs).unwrap();
+        block_buffer_pool.record_objs(blobs).unwrap();
 
         let empty: Vec<u64> = vec![];
         for i in 0..num_entries as u64 {
             for j in 0..i {
                 assert_eq!(
-                    blocktree.search_absent_info_indices(slot, j, i, (i - j) as usize),
+                    block_buffer_pool.search_absent_info_indices(slot, j, i, (i - j) as usize),
                     empty
                 );
             }
         }
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_should_insert_blob() {
         let (mut blobs, _) = make_slot_entries(0, 0, 20);
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
         // Insert the first 5 blobs, we don't have a "is_last" blob yet
-        blocktree.punctuate_info_objs(&blobs[0..5]).unwrap();
+        block_buffer_pool.punctuate_info_objs(&blobs[0..5]).unwrap();
 
         // Trying to insert a blob less than consumed should fail
-        let slot_meta = blocktree.meta_info(0).unwrap().unwrap();
+        let slot_meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
         assert_eq!(slot_meta.consumed, 5);
         assert!(!ought_to_punctuate_obj(
             &slot_meta,
-            &blocktree.db,
+            &block_buffer_pool.db,
             &HashMap::new(),
             &blobs[4].clone()
         ));
 
         // Trying to insert the same blob again should fail
-        blocktree.punctuate_info_objs(&blobs[7..8]).unwrap();
-        let slot_meta = blocktree.meta_info(0).unwrap().unwrap();
+        block_buffer_pool.punctuate_info_objs(&blobs[7..8]).unwrap();
+        let slot_meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
         assert!(!ought_to_punctuate_obj(
             &slot_meta,
-            &blocktree.db,
+            &block_buffer_pool.db,
             &HashMap::new(),
             &blobs[7].clone()
         ));
 
         // Trying to insert another "is_last" blob with index < the received index
         // should fail
-        blocktree.punctuate_info_objs(&blobs[8..9]).unwrap();
-        let slot_meta = blocktree.meta_info(0).unwrap().unwrap();
+        block_buffer_pool.punctuate_info_objs(&blobs[8..9]).unwrap();
+        let slot_meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
         assert_eq!(slot_meta.received, 9);
         blobs[8].set_is_last_in_slot();
         assert!(!ought_to_punctuate_obj(
             &slot_meta,
-            &blocktree.db,
+            &block_buffer_pool.db,
             &HashMap::new(),
             &blobs[8].clone()
         ));
 
         // Insert the 10th blob, which is marked as "is_last"
         blobs[9].set_is_last_in_slot();
-        blocktree.punctuate_info_objs(&blobs[9..10]).unwrap();
-        let slot_meta = blocktree.meta_info(0).unwrap().unwrap();
+        block_buffer_pool.punctuate_info_objs(&blobs[9..10]).unwrap();
+        let slot_meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
 
         // Trying to insert a blob with index > the "is_last" blob should fail
         assert!(!ought_to_punctuate_obj(
             &slot_meta,
-            &blocktree.db,
+            &block_buffer_pool.db,
             &HashMap::new(),
             &blobs[10].clone()
         ));
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_insert_multiple_is_last() {
         let (mut blobs, _) = make_slot_entries(0, 0, 20);
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
         // Inserting multiple blobs with the is_last flag set should only insert
         // the first blob with the "is_last" flag, and drop the rest
@@ -3096,51 +3095,51 @@ pub mod tests {
             blobs[i].set_is_last_in_slot();
         }
 
-        blocktree.punctuate_info_objs(&blobs[..]).unwrap();
-        let slot_meta = blocktree.meta_info(0).unwrap().unwrap();
+        block_buffer_pool.punctuate_info_objs(&blobs[..]).unwrap();
+        let slot_meta = block_buffer_pool.meta_info(0).unwrap().unwrap();
 
         assert_eq!(slot_meta.consumed, 7);
         assert_eq!(slot_meta.received, 7);
         assert_eq!(slot_meta.last_index, 6);
         assert!(slot_meta.is_full());
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_slot_data_iterator() {
         // Construct the blobs
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
         let blobs_per_slot = 10;
         let slots = vec![2, 4, 8, 12];
         let all_blobs = make_chaining_slot_entries(&slots, blobs_per_slot);
         let slot_8_blobs = all_blobs[2].0.clone();
         for (slot_blobs, _) in all_blobs {
-            blocktree.punctuate_info_objs(&slot_blobs[..]).unwrap();
+            block_buffer_pool.punctuate_info_objs(&slot_blobs[..]).unwrap();
         }
 
         // Slot doesnt exist, iterator should be empty
-        let blob_iter = blocktree.slit_info_repeater(5).unwrap();
+        let blob_iter = block_buffer_pool.slit_info_repeater(5).unwrap();
         let result: Vec<_> = blob_iter.collect();
         assert_eq!(result, vec![]);
 
         // Test that the iterator for slot 8 contains what was inserted earlier
-        let blob_iter = blocktree.slit_info_repeater(8).unwrap();
+        let blob_iter = block_buffer_pool.slit_info_repeater(8).unwrap();
         let result: Vec<_> = blob_iter.map(|(_, bytes)| Blob::new(&bytes)).collect();
         assert_eq!(result.len() as u64, blobs_per_slot);
         assert_eq!(result, slot_8_blobs);
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     fn test_set_root() {
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
-        blocktree.config_base(0, 0).unwrap();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
+        block_buffer_pool.config_base(0, 0).unwrap();
         let chained_slots = vec![0, 2, 4, 7, 12, 15];
 
         // Make a chain of slots
@@ -3148,26 +3147,26 @@ pub mod tests {
 
         // Insert the chain of slots into the ledger
         for (slot_blobs, _) in all_blobs {
-            blocktree.punctuate_info_objs(&slot_blobs[..]).unwrap();
+            block_buffer_pool.punctuate_info_objs(&slot_blobs[..]).unwrap();
         }
 
-        blocktree.config_base(4, 0).unwrap();
+        block_buffer_pool.config_base(4, 0).unwrap();
         for i in &chained_slots[0..3] {
-            assert!(blocktree.is_base(*i));
+            assert!(block_buffer_pool.is_base(*i));
         }
 
         for i in &chained_slots[3..] {
-            assert!(!blocktree.is_base(*i));
+            assert!(!block_buffer_pool.is_base(*i));
         }
 
-        blocktree.config_base(15, 4).unwrap();
+        block_buffer_pool.config_base(15, 4).unwrap();
 
         for i in chained_slots {
-            assert!(blocktree.is_base(i));
+            assert!(block_buffer_pool.is_base(i));
         }
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     mod erasure {
@@ -3190,7 +3189,7 @@ pub mod tests {
             use ErasureMetaStatus::{DataFull, StillNeed};
 
             let path = get_tmp_ledger_path!();
-            let blocktree = BlockBufferPool::open_ledger_file(&path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&path).unwrap();
 
             // two erasure sets
             let num_blobs = NUM_DATA as u64 * 2;
@@ -3203,9 +3202,9 @@ pub mod tests {
                 .map(|blob| Arc::new(RwLock::new(blob)))
                 .collect();
 
-            blocktree.record_objs(&blobs[..2]).unwrap();
+            block_buffer_pool.record_objs(&blobs[..2]).unwrap();
 
-            let erasure_meta_opt = blocktree
+            let erasure_meta_opt = block_buffer_pool
                 .wipeout_meta_info(slot, 0)
                 .expect("DB get must succeed");
 
@@ -3218,9 +3217,9 @@ pub mod tests {
                 _ => panic!("Should still need more blobs"),
             };
 
-            blocktree.record_objs(&blobs[2..NUM_DATA]).unwrap();
+            block_buffer_pool.record_objs(&blobs[2..NUM_DATA]).unwrap();
 
-            let erasure_meta = blocktree
+            let erasure_meta = block_buffer_pool
                 .wipeout_meta_info(slot, 0)
                 .expect("DB get must succeed")
                 .unwrap();
@@ -3228,18 +3227,18 @@ pub mod tests {
             assert_eq!(erasure_meta.status(), DataFull);
 
             // insert all coding blobs in first set
-            let mut coding_generator = CodingGenerator::new(Arc::clone(&blocktree.session));
+            let mut coding_generator = CodingGenerator::new(Arc::clone(&block_buffer_pool.session));
             let coding_blobs = coding_generator.next(&shared_blobs[..NUM_DATA]);
 
             for shared_coding_blob in coding_blobs {
                 let blob = shared_coding_blob.read().unwrap();
                 let size = blob.size() + BLOB_HEADER_SIZE;
-                blocktree
+                block_buffer_pool
                     .place_encrypting_obj_bytes(blob.slot(), blob.index(), &blob.data[..size])
                     .unwrap();
             }
 
-            let erasure_meta = blocktree
+            let erasure_meta = block_buffer_pool
                 .wipeout_meta_info(slot, 0)
                 .expect("DB get must succeed")
                 .unwrap();
@@ -3251,9 +3250,9 @@ pub mod tests {
             let mut end = 1;
             let blobs_needed = ERASURE_SET_SIZE - NUM_CODING;
             while end < blobs_needed {
-                blocktree.record_objs(&set2[end - 1..end]).unwrap();
+                block_buffer_pool.record_objs(&set2[end - 1..end]).unwrap();
 
-                let erasure_meta = blocktree
+                let erasure_meta = block_buffer_pool
                     .wipeout_meta_info(slot, 1)
                     .expect("DB get must succeed")
                     .unwrap();
@@ -3267,18 +3266,18 @@ pub mod tests {
             }
 
             // insert all coding blobs in 2nd set. Should trigger recovery
-            let mut coding_generator = CodingGenerator::new(Arc::clone(&blocktree.session));
+            let mut coding_generator = CodingGenerator::new(Arc::clone(&block_buffer_pool.session));
             let coding_blobs = coding_generator.next(&shared_blobs[NUM_DATA..]);
 
             for shared_coding_blob in coding_blobs {
                 let blob = shared_coding_blob.read().unwrap();
                 let size = blob.size() + BLOB_HEADER_SIZE;
-                blocktree
+                block_buffer_pool
                     .place_encrypting_obj_bytes(blob.slot(), blob.index(), &blob.data[..size])
                     .unwrap();
             }
 
-            let erasure_meta = blocktree
+            let erasure_meta = block_buffer_pool
                 .wipeout_meta_info(slot, 1)
                 .expect("DB get must succeed")
                 .unwrap();
@@ -3290,10 +3289,10 @@ pub mod tests {
                 (erasure_meta.start_index(), erasure_meta.end_indexes().1);
 
             for idx in start_idx..coding_end_idx {
-                blocktree.erase_encrypting_obj(slot, idx).unwrap();
+                block_buffer_pool.erase_encrypting_obj(slot, idx).unwrap();
             }
 
-            let erasure_meta = blocktree
+            let erasure_meta = block_buffer_pool
                 .wipeout_meta_info(slot, 1)
                 .expect("DB get must succeed")
                 .unwrap();
@@ -3309,7 +3308,7 @@ pub mod tests {
 
             let ledger_path = get_tmp_ledger_path!();
 
-            let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
             let num_sets = 3;
             let data_blobs = make_slot_entries(slot, 0, num_sets * NUM_DATA as u64)
                 .0
@@ -3317,7 +3316,7 @@ pub mod tests {
                 .map(Blob::into)
                 .collect::<Vec<_>>();
 
-            let mut coding_generator = CodingGenerator::new(Arc::clone(&blocktree.session));
+            let mut coding_generator = CodingGenerator::new(Arc::clone(&block_buffer_pool.session));
 
             for (set_index, data_blobs) in data_blobs.chunks_exact(NUM_DATA).enumerate() {
                 let focused_index = (set_index + 1) * NUM_DATA - 1;
@@ -3327,7 +3326,7 @@ pub mod tests {
 
                 let deleted_data = data_blobs[NUM_DATA - 1].clone();
 
-                blocktree
+                block_buffer_pool
                     .record_public_objs(&data_blobs[..NUM_DATA - 1])
                     .unwrap();
 
@@ -3336,14 +3335,14 @@ pub mod tests {
                     let blob = shared_coding_blob.read().unwrap();
                     let size = blob.size() + BLOB_HEADER_SIZE;
 
-                    blocktree
+                    block_buffer_pool
                         .place_encrypting_obj_bytes(slot, blob.index(), &blob.data[..size])
                         .expect("Inserting coding blobs must succeed");
                     (slot, blob.index());
                 }
 
                 // Verify the slot meta
-                let slot_meta = blocktree.meta_info(slot).unwrap().unwrap();
+                let slot_meta = block_buffer_pool.meta_info(slot).unwrap().unwrap();
                 assert_eq!(slot_meta.consumed, (NUM_DATA * (set_index + 1)) as u64);
                 assert_eq!(slot_meta.received, (NUM_DATA * (set_index + 1)) as u64);
                 assert_eq!(slot_meta.parent_slot, 0);
@@ -3356,16 +3355,16 @@ pub mod tests {
                     );
                 }
 
-                let erasure_meta = blocktree
-                    .erasure_meta_cf
+                let erasure_meta = block_buffer_pool
+                    .e_m_c_g
                     .get((slot, set_index as u64))
                     .expect("Erasure Meta should be present")
                     .unwrap();
 
                 assert_eq!(erasure_meta.status(), ErasureMetaStatus::DataFull);
 
-                let retrieved_data = blocktree
-                    .data_cf
+                let retrieved_data = block_buffer_pool
+                    .d_c_g
                     .get_bytes((slot, focused_index as u64))
                     .unwrap();
 
@@ -3376,9 +3375,9 @@ pub mod tests {
                 assert_eq!(&data_blob, &*deleted_data.read().unwrap());
             }
 
-            drop(blocktree);
+            drop(block_buffer_pool);
 
-            BlockBufferPool::destruct(&ledger_path).expect("Expect successful BlockBufferPool destruction");
+            BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expect successful BlockBufferPool destruction");
         }
 
         #[test]
@@ -3388,14 +3387,14 @@ pub mod tests {
 
             morgan_logger::setup();
             let ledger_path = get_tmp_ledger_path!();
-            let blocktree = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&ledger_path).unwrap();
             let data_blobs = make_slot_entries(SLOT, 0, NUM_DATA as u64)
                 .0
                 .into_iter()
                 .map(Blob::into)
                 .collect::<Vec<_>>();
 
-            let mut coding_generator = CodingGenerator::new(Arc::clone(&blocktree.session));
+            let mut coding_generator = CodingGenerator::new(Arc::clone(&block_buffer_pool.session));
 
             let shared_coding_blobs = coding_generator.next(&data_blobs);
             assert_eq!(shared_coding_blobs.len(), NUM_CODING);
@@ -3405,14 +3404,14 @@ pub mod tests {
                 let blob = shared_blob.read().unwrap();
                 let size = blob.size() + BLOB_HEADER_SIZE;
 
-                blocktree
+                block_buffer_pool
                     .place_encrypting_obj_bytes(SLOT, blob.index(), &blob.data[..size])
                     .expect("Inserting coding blobs must succeed");
             }
 
             // try recovery even though there aren't enough blobs
-            let erasure_meta = blocktree
-                .erasure_meta_cf
+            let erasure_meta = block_buffer_pool
+                .e_m_c_g
                 .get((SLOT, SET_INDEX))
                 .unwrap()
                 .unwrap();
@@ -3422,8 +3421,8 @@ pub mod tests {
             let prev_inserted_blob_datas = HashMap::new();
 
             let attempt_result = attempt_wipeout_restore(
-                &blocktree.db,
-                &blocktree.session,
+                &block_buffer_pool.db,
+                &block_buffer_pool.session,
                 &erasure_meta,
                 SLOT,
                 &prev_inserted_blob_datas,
@@ -3482,7 +3481,7 @@ pub mod tests {
                 .collect::<Vec<_>>();
 
             let model = generate_ledger_model(specs);
-            let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&path).unwrap());
+            let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&path).unwrap());
 
             // Write to each slot in a different thread simultaneously.
             // These writes should trigger the recovery. Every erasure set should have all of its
@@ -3495,7 +3494,7 @@ pub mod tests {
             // first.
             // The goal is to be as racey as possible and cover a wide range of situations
             for thread_id in 0..N_THREADS {
-                let blocktree = Arc::clone(&blocktree);
+                let block_buffer_pool = Arc::clone(&block_buffer_pool);
                 let mut rng = SmallRng::from_rng(&mut rng).unwrap();
                 let model = model.clone();
                 let handle = thread::spawn(move || {
@@ -3510,7 +3509,7 @@ pub mod tests {
                             let mut attempt = 0;
                             loop {
                                 if rng.gen() {
-                                    blocktree
+                                    block_buffer_pool
                                         .record_public_objs(&erasure_set.data)
                                         .expect("Writing data blobs must succeed");
                                     debug!(
@@ -3521,7 +3520,7 @@ pub mod tests {
                                     for shared_coding_blob in &erasure_set.coding {
                                         let blob = shared_coding_blob.read().unwrap();
                                         let size = blob.size() + BLOB_HEADER_SIZE;
-                                        blocktree
+                                        block_buffer_pool
                                             .place_encrypting_obj_bytes(
                                                 slot,
                                                 blob.index(),
@@ -3538,7 +3537,7 @@ pub mod tests {
                                     for shared_coding_blob in &erasure_set.coding {
                                         let blob = shared_coding_blob.read().unwrap();
                                         let size = blob.size() + BLOB_HEADER_SIZE;
-                                        blocktree
+                                        block_buffer_pool
                                             .place_encrypting_obj_bytes(
                                                 slot,
                                                 blob.index(),
@@ -3551,7 +3550,7 @@ pub mod tests {
                                         slot, erasure_set.set_index
                                     );
 
-                                    blocktree
+                                    block_buffer_pool
                                         .record_public_objs(&erasure_set.data)
                                         .expect("Writing data blobs must succeed");
                                     debug!(
@@ -3563,8 +3562,8 @@ pub mod tests {
                                 // due to racing, some blobs might not be inserted. don't stop
                                 // trying until *some* thread succeeds in writing everything and
                                 // triggering recovery.
-                                let erasure_meta = blocktree
-                                    .erasure_meta_cf
+                                let erasure_meta = block_buffer_pool
+                                    .e_m_c_g
                                     .get((slot, erasure_set.set_index))
                                     .unwrap()
                                     .unwrap();
@@ -3597,8 +3596,8 @@ pub mod tests {
                 for erasure_set_model in slot_model.chunks {
                     let set_index = erasure_set_model.set_index as u64;
 
-                    let erasure_meta = blocktree
-                        .erasure_meta_cf
+                    let erasure_meta = block_buffer_pool
+                        .e_m_c_g
                         .get((slot, set_index))
                         .expect("DB get must succeed")
                         .expect("ErasureMeta must be present for each erasure set");
@@ -3617,8 +3616,8 @@ pub mod tests {
                 }
             }
 
-            drop(blocktree);
-            BlockBufferPool::destruct(&path).expect("BlockBufferPool destruction must succeed");
+            drop(block_buffer_pool);
+            BlockBufferPool::remove_ledger_file(&path).expect("BlockBufferPool destruction must succeed");
         }
     }
 

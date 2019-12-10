@@ -1,9 +1,9 @@
-use crate::block_buffer_pool::{create_new_tmp_ledger, tmp_copy_blocktree};
-use crate::cluster::Cluster;
-use crate::cluster_message::{Node, FULLNODE_PORT_RANGE};
+use crate::block_buffer_pool::{create_new_tmp_ledger, tmp_copy_block_buffer};
+use crate::node_group::NodeGroup;
+use crate::node_group_info::{Node, FULLNODE_PORT_RANGE};
 use crate::connection_info::ContactInfo;
 use crate::genesis_utils::{create_genesis_block_with_leader, GenesisBlockInfo};
-use crate::gossip_service::discover_cluster;
+use crate::gossip_service::find_node_group_host;
 use crate::cloner::StorageMiner;
 use crate::service::Service;
 use crate::verifier::{Validator, ValidatorConfig};
@@ -52,18 +52,18 @@ impl StorageMinerInfo {
 }
 
 #[derive(Clone, Debug)]
-pub struct ClusterConfig {
-    /// The fullnode config that should be applied to every node in the cluster
+pub struct NodeGroupConfig {
+    /// The fullnode config that should be applied to every node in the node group
     pub validator_config: ValidatorConfig,
-    /// Number of miners in the cluster
+    /// Number of miners in the node group
     /// Note- miners will timeout if ticks_per_slot is much larger than the default 8
     pub miner_amnt: usize,
     /// Number of nodes that are unstaked and not voting (a.k.a listening)
     pub observer_amnt: u64,
     /// The stakes of each node
     pub node_stakes: Vec<u64>,
-    /// The total difs available to the cluster
-    pub cluster_difs: u64,
+    /// The total difs available to the node group
+    pub node_group_difs: u64,
     pub ticks_per_slot: u64,
     pub slots_per_epoch: u64,
     pub stakers_slot_offset: u64,
@@ -71,14 +71,14 @@ pub struct ClusterConfig {
     pub waterclock_config: WaterClockConfig,
 }
 
-impl Default for ClusterConfig {
+impl Default for NodeGroupConfig {
     fn default() -> Self {
-        ClusterConfig {
+        NodeGroupConfig {
             validator_config: ValidatorConfig::default(),
             miner_amnt: 0,
             observer_amnt: 0,
             node_stakes: vec![],
-            cluster_difs: 0,
+            node_group_difs: 0,
             ticks_per_slot: DEFAULT_TICKS_PER_SLOT,
             slots_per_epoch: DEFAULT_SLOTS_PER_EPOCH,
             stakers_slot_offset: DEFAULT_SLOTS_PER_EPOCH,
@@ -88,7 +88,7 @@ impl Default for ClusterConfig {
     }
 }
 
-pub struct LocalCluster {
+pub struct LocalNodeGroup {
     /// Keypair with funding to participate in the network
     pub funding_keypair: Keypair,
     pub validator_config: ValidatorConfig,
@@ -103,22 +103,22 @@ pub struct LocalCluster {
     pub storage_miner_infos: HashMap<Pubkey, StorageMinerInfo>,
 }
 
-impl LocalCluster {
+impl LocalNodeGroup {
     pub fn new_with_equal_stakes(
         num_nodes: usize,
-        cluster_difs: u64,
+        node_group_difs: u64,
         difs_per_node: u64,
     ) -> Self {
         let stakes: Vec<_> = (0..num_nodes).map(|_| difs_per_node).collect();
-        let config = ClusterConfig {
+        let config = NodeGroupConfig {
             node_stakes: stakes,
-            cluster_difs,
-            ..ClusterConfig::default()
+            node_group_difs,
+            ..NodeGroupConfig::default()
         };
         Self::new(&config)
     }
 
-    pub fn new(config: &ClusterConfig) -> Self {
+    pub fn new(config: &NodeGroupConfig) -> Self {
         let leader_keypair = Arc::new(Keypair::new());
         let leader_pubkey = leader_keypair.pubkey();
         let leader_node = Node::new_localhost_with_pubkey(&leader_keypair.pubkey());
@@ -127,7 +127,7 @@ impl LocalCluster {
             mint_keypair,
             voting_keypair,
         } = create_genesis_block_with_leader(
-            config.cluster_difs,
+            config.node_group_difs,
             &leader_pubkey,
             config.node_stakes[0],
         );
@@ -142,7 +142,7 @@ impl LocalCluster {
             .extend_from_slice(&config.native_instruction_processors);
 
         let (genesis_ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
-        let leader_ledger_path = tmp_copy_blocktree!(&genesis_ledger_path);
+        let leader_ledger_path = tmp_copy_block_buffer!(&genesis_ledger_path);
         let leader_contact_info = leader_node.info.clone();
         let leader_storage_keypair = Arc::new(storage_keypair);
         let leader_voting_keypair = Arc::new(voting_keypair);
@@ -170,7 +170,7 @@ impl LocalCluster {
             },
         );
 
-        let mut cluster = Self {
+        let mut node_group = Self {
             funding_keypair: mint_keypair,
             entry_point_info: leader_contact_info,
             fullnodes,
@@ -184,32 +184,32 @@ impl LocalCluster {
         };
 
         for stake in &config.node_stakes[1..] {
-            cluster.add_validator(&config.validator_config, *stake);
+            node_group.add_validator(&config.validator_config, *stake);
         }
 
         let listener_config = ValidatorConfig {
             voting_disabled: true,
             ..config.validator_config.clone()
         };
-        (0..config.observer_amnt).for_each(|_| cluster.add_validator(&listener_config, 0));
+        (0..config.observer_amnt).for_each(|_| node_group.add_validator(&listener_config, 0));
 
-        discover_cluster(
-            &cluster.entry_point_info.gossip,
+        find_node_group_host(
+            &node_group.entry_point_info.gossip,
             config.node_stakes.len() + config.observer_amnt as usize,
         )
         .unwrap();
 
         for _ in 0..config.miner_amnt {
-            cluster.add_miner();
+            node_group.add_miner();
         }
 
-        discover_cluster(
-            &cluster.entry_point_info.gossip,
+        find_node_group_host(
+            &node_group.entry_point_info.gossip,
             config.node_stakes.len() + config.miner_amnt as usize,
         )
         .unwrap();
 
-        cluster
+        node_group
     }
 
     pub fn exit(&self) {
@@ -241,7 +241,7 @@ impl LocalCluster {
         let storage_keypair = Arc::new(Keypair::new());
         let validator_pubkey = validator_keypair.pubkey();
         let validator_node = Node::new_localhost_with_pubkey(&validator_keypair.pubkey());
-        let ledger_path = tmp_copy_blocktree!(&self.genesis_ledger_path);
+        let ledger_path = tmp_copy_block_buffer!(&self.genesis_ledger_path);
 
         if validator_config.voting_disabled {
             // setup as a listener
@@ -548,7 +548,7 @@ impl LocalCluster {
     }
 }
 
-impl Cluster for LocalCluster {
+impl NodeGroup for LocalNodeGroup {
     fn get_node_pubkeys(&self) -> Vec<Pubkey> {
         self.fullnodes.keys().cloned().collect()
     }
@@ -580,7 +580,7 @@ impl Cluster for LocalCluster {
     }
 }
 
-impl Drop for LocalCluster {
+impl Drop for LocalNodeGroup {
     fn drop(&mut self) {
         self.close();
     }
@@ -593,34 +593,34 @@ mod test {
     use morgan_runtime::epoch_schedule::MINIMUM_SLOT_LENGTH;
 
     #[test]
-    fn test_local_cluster_start_and_exit() {
+    fn test_local_node_group_start_and_exit() {
         morgan_logger::setup();
         let num_nodes = 1;
-        let cluster = LocalCluster::new_with_equal_stakes(num_nodes, 100, 3);
-        assert_eq!(cluster.fullnodes.len(), num_nodes);
-        assert_eq!(cluster.miners.len(), 0);
+        let node_group = LocalNodeGroup::new_with_equal_stakes(num_nodes, 100, 3);
+        assert_eq!(node_group.fullnodes.len(), num_nodes);
+        assert_eq!(node_group.miners.len(), 0);
     }
 
     #[test]
-    fn test_local_cluster_start_and_exit_with_config() {
+    fn test_local_node_group_start_and_exit_with_config() {
         morgan_logger::setup();
         let mut validator_config = ValidatorConfig::default();
         validator_config.rpc_config.enable_fullnode_exit = true;
         validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
         const NUM_NODES: usize = 1;
         let miner_amnt = 1;
-        let config = ClusterConfig {
+        let config = NodeGroupConfig {
             validator_config,
             miner_amnt,
             node_stakes: vec![3; NUM_NODES],
-            cluster_difs: 100,
+            node_group_difs: 100,
             ticks_per_slot: 8,
             slots_per_epoch: MINIMUM_SLOT_LENGTH as u64,
-            ..ClusterConfig::default()
+            ..NodeGroupConfig::default()
         };
-        let cluster = LocalCluster::new(&config);
-        assert_eq!(cluster.fullnodes.len(), NUM_NODES);
-        assert_eq!(cluster.miners.len(), miner_amnt);
+        let node_group = LocalNodeGroup::new(&config);
+        assert_eq!(node_group.fullnodes.len(), NUM_NODES);
+        assert_eq!(node_group.miners.len(), miner_amnt);
     }
 
 }

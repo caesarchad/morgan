@@ -97,7 +97,7 @@ matches = "0.1.6"
 name = "banking_stage"
 
 [[bench]]
-name = "blocktree"
+name = "block_buffer_pool"
 
 [[bench]]
 name = "ledger"

@@ -1,12 +1,12 @@
 use crate::block_buffer_pool::BlockBufferPool;
-/// Cluster independant integration tests
+/// NodeGroup independant integration tests
 ///
 /// All tests must start from an entry point and a funding keypair and
 /// discover the rest of the network.
-use crate::cluster_message::FULLNODE_PORT_RANGE;
+use crate::node_group_info::FULLNODE_PORT_RANGE;
 use crate::connection_info::ContactInfo;
 use crate::entry_info::{Entry, EntrySlice};
-use crate::gossip_service::discover_cluster;
+use crate::gossip_service::find_node_group_host;
 use crate::fork_selection::VOTE_THRESHOLD_DEPTH;
 use morgan_client::thin_client::create_client;
 use morgan_runtime::epoch_schedule::MINIMUM_SLOT_LENGTH;
@@ -39,9 +39,9 @@ pub fn spend_and_verify_all_nodes(
     funding_keypair: &Keypair,
     nodes: usize,
 ) {
-    let (cluster_nodes, _) = discover_cluster(&entry_point_info.gossip, nodes).unwrap();
-    assert!(cluster_nodes.len() >= nodes);
-    for ingress_node in &cluster_nodes {
+    let (node_group_hosts, _) = find_node_group_host(&entry_point_info.gossip, nodes).unwrap();
+    assert!(node_group_hosts.len() >= nodes);
+    for ingress_node in &node_group_hosts {
         let random_keypair = Keypair::new();
         let client = create_client(ingress_node.client_facing_addr(), FULLNODE_PORT_RANGE);
         let bal = client
@@ -55,7 +55,7 @@ pub fn spend_and_verify_all_nodes(
         let sig = client
             .retry_transfer_until_confirmed(&funding_keypair, &mut transaction, 5, confs)
             .unwrap();
-        for validator in &cluster_nodes {
+        for validator in &node_group_hosts {
             let client = create_client(validator.client_facing_addr(), FULLNODE_PORT_RANGE);
             client.poll_for_signature_confirmation(&sig, confs).unwrap();
         }
@@ -80,14 +80,14 @@ pub fn send_many_transactions(node: &ContactInfo, funding_keypair: &Keypair, num
 }
 
 pub fn fullnode_exit(entry_point_info: &ContactInfo, nodes: usize) {
-    let (cluster_nodes, _) = discover_cluster(&entry_point_info.gossip, nodes).unwrap();
-    assert!(cluster_nodes.len() >= nodes);
-    for node in &cluster_nodes {
+    let (node_group_hosts, _) = find_node_group_host(&entry_point_info.gossip, nodes).unwrap();
+    assert!(node_group_hosts.len() >= nodes);
+    for node in &node_group_hosts {
         let client = create_client(node.client_facing_addr(), FULLNODE_PORT_RANGE);
         assert!(client.fullnode_exit().unwrap());
     }
     sleep(Duration::from_millis(DEFAULT_SLOT_MILLIS));
-    for node in &cluster_nodes {
+    for node in &node_group_hosts {
         let client = create_client(node.client_facing_addr(), FULLNODE_PORT_RANGE);
         assert!(client.fullnode_exit().is_err());
     }
@@ -190,12 +190,12 @@ pub fn kill_entry_and_spend_and_verify_rest(
     slot_millis: u64,
 ) {
     morgan_logger::setup();
-    let (cluster_nodes, _) = discover_cluster(&entry_point_info.gossip, nodes).unwrap();
-    assert!(cluster_nodes.len() >= nodes);
+    let (node_group_hosts, _) = find_node_group_host(&entry_point_info.gossip, nodes).unwrap();
+    assert!(node_group_hosts.len() >= nodes);
     let client = create_client(entry_point_info.client_facing_addr(), FULLNODE_PORT_RANGE);
     let first_two_epoch_slots = MINIMUM_SLOT_LENGTH * 3;
 
-    for ingress_node in &cluster_nodes {
+    for ingress_node in &node_group_hosts {
         client
             .poll_get_balance(&ingress_node.id)
             .unwrap_or_else(|err| panic!("Node {} has no balance: {}", ingress_node.id, err));
@@ -245,7 +245,7 @@ pub fn kill_entry_and_spend_and_verify_rest(
             module_path!().to_string()
         )
     );
-    for ingress_node in &cluster_nodes {
+    for ingress_node in &node_group_hosts {
         if ingress_node.id == entry_point_info.id {
             continue;
         }
@@ -291,7 +291,7 @@ pub fn kill_entry_and_spend_and_verify_rest(
                 }
             };
 
-            match poll_all_nodes_for_signature(&entry_point_info, &cluster_nodes, &sig, confs) {
+            match poll_all_nodes_for_signature(&entry_point_info, &node_group_hosts, &sig, confs) {
                 Err(e) => {
                     result = Err(e);
                 }
@@ -305,11 +305,11 @@ pub fn kill_entry_and_spend_and_verify_rest(
 
 fn poll_all_nodes_for_signature(
     entry_point_info: &ContactInfo,
-    cluster_nodes: &[ContactInfo],
+    node_group_hosts: &[ContactInfo],
     sig: &Signature,
     confs: usize,
 ) -> Result<(), TransportError> {
-    for validator in cluster_nodes {
+    for validator in node_group_hosts {
         if validator.id == entry_point_info.id {
             continue;
         }
@@ -320,73 +320,20 @@ fn poll_all_nodes_for_signature(
     Ok(())
 }
 
-pub(super) fn has_newline_at_eof(file: &Path, contents: &str) -> Result<(), Cow<'static, str>> {
-    if skip_whitespace_checks(file) {
-        return Ok(());
-    }
 
-    if !contents.ends_with('\n') {
-        Err("missing a newline at EOF".into())
-    } else {
-        Ok(())
-    }
-}
-
-pub(super) fn has_trailing_whitespace(
-    file: &Path,
-    contents: &str,
-) -> Result<(), Cow<'static, str>> {
-    if skip_whitespace_checks(file) {
-        return Ok(());
-    }
-
-    for (ln, line) in contents
-        .lines()
-        .enumerate()
-        .map(|(ln, line)| (ln + 1, line))
-    {
-        if line.trim_end() != line {
-            return Err(Cow::Owned(format!("trailing whitespace on line {}", ln)));
-        }
-    }
-
-    if contents
-        .lines()
-        .rev()
-        .take_while(|line| line.is_empty())
-        .count()
-        > 0
-    {
-        return Err("trailing whitespace at EOF".into());
-    }
-
-    Ok(())
-}
-
-fn skip_whitespace_checks(file: &Path) -> bool {
-    match file
-        .extension()
-        .map(OsStr::to_str)
-        .and_then(convert::identity)
-    {
-        Some("exp") => true,
-        _ => false,
-    }
-}
-
-fn get_and_verify_slot_entries(blocktree: &BlockBufferPool, slot: u64, last_entry: &Hash) -> Vec<Entry> {
-    let entries = blocktree.fetch_slit_items(slot, 0, None).unwrap();
+fn get_and_verify_slot_entries(block_buffer_pool: &BlockBufferPool, slot: u64, last_entry: &Hash) -> Vec<Entry> {
+    let entries = block_buffer_pool.fetch_slit_items(slot, 0, None).unwrap();
     assert!(entries.verify(last_entry));
     entries
 }
 
 fn verify_slot_ticks(
-    blocktree: &BlockBufferPool,
+    block_buffer_pool: &BlockBufferPool,
     slot: u64,
     last_entry: &Hash,
     expected_num_ticks: Option<usize>,
 ) -> Hash {
-    let entries = get_and_verify_slot_entries(blocktree, slot, last_entry);
+    let entries = get_and_verify_slot_entries(block_buffer_pool, slot, last_entry);
     let num_ticks: usize = entries.iter().map(|entry| entry.is_tick() as usize).sum();
     if let Some(expected_num_ticks) = expected_num_ticks {
         assert_eq!(num_ticks, expected_num_ticks);

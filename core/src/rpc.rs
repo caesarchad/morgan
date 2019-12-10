@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::connection_info::ContactInfo;
 use crate::packet::PACKET_DATA_SIZE;
 use crate::storage_stage::StorageState;
@@ -149,8 +149,8 @@ impl JsonRpcRequestProcessor {
     }
 }
 
-fn get_tpu_addr(cluster_info: &Arc<RwLock<ClusterInfo>>) -> Result<SocketAddr> {
-    let contact_info = cluster_info.read().unwrap().my_data();
+fn get_tpu_addr(node_group_info: &Arc<RwLock<NodeGroupInfo>>) -> Result<SocketAddr> {
+    let contact_info = node_group_info.read().unwrap().my_data();
     Ok(contact_info.tpu)
 }
 
@@ -165,7 +165,7 @@ fn verify_signature(input: &str) -> Result<Signature> {
 #[derive(Clone)]
 pub struct Meta {
     pub request_processor: Arc<RwLock<JsonRpcRequestProcessor>>,
-    pub cluster_info: Arc<RwLock<ClusterInfo>>,
+    pub node_group_info: Arc<RwLock<NodeGroupInfo>>,
 }
 impl Metadata for Meta {}
 
@@ -291,7 +291,7 @@ impl RpcSol for RpcSolImpl {
     }
 
     fn get_cluster_nodes(&self, meta: Self::Metadata) -> Result<Vec<RpcContactInfo>> {
-        let cluster_info = meta.cluster_info.read().unwrap();
+        let node_group_info = meta.node_group_info.read().unwrap();
         fn valid_address_or_none(addr: &SocketAddr) -> Option<SocketAddr> {
             if ContactInfo::is_valid_address(addr) {
                 Some(*addr)
@@ -299,7 +299,7 @@ impl RpcSol for RpcSolImpl {
                 None
             }
         }
-        Ok(cluster_info
+        Ok(node_group_info
             .all_peers()
             .iter()
             .filter_map(|(contact_info, _)| {
@@ -408,7 +408,7 @@ impl RpcSol for RpcSolImpl {
         })?;
 
         let transactions_socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        let transactions_addr = get_tpu_addr(&meta.cluster_info)?;
+        let transactions_addr = get_tpu_addr(&meta.node_group_info)?;
         transactions_socket
             .send_to(&data, transactions_addr)
             .map_err(|err| {
@@ -497,7 +497,7 @@ impl RpcSol for RpcSolImpl {
         })?;
 
         let transactions_socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        let transactions_addr = get_tpu_addr(&meta.cluster_info)?;
+        let transactions_addr = get_tpu_addr(&meta.node_group_info)?;
         transactions_socket
             .send_to(&data, transactions_addr)
             .map_err(|err| {
@@ -573,7 +573,7 @@ impl RpcSol for RpcSolImpl {
             return Err(Error::invalid_request());
         }
         let transactions_socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        let transactions_addr = get_tpu_addr(&meta.cluster_info)?;
+        let transactions_addr = get_tpu_addr(&meta.node_group_info)?;
         trace!("send_transaction: leader is {:?}", &transactions_addr);
         transactions_socket
             .send_to(&data, transactions_addr)
@@ -597,8 +597,8 @@ impl RpcSol for RpcSolImpl {
     }
 
     fn get_slot_leader(&self, meta: Self::Metadata) -> Result<String> {
-        let cluster_info = meta.cluster_info.read().unwrap();
-        let leader_data_option = cluster_info.leader_data();
+        let node_group_info = meta.node_group_info.read().unwrap();
+        let leader_data_option = node_group_info.leader_data();
         Ok(leader_data_option
             .and_then(|leader_data| Some(leader_data.id))
             .unwrap_or_default()
@@ -671,19 +671,19 @@ mod tests {
             bank_forks,
             &exit,
         )));
-        let cluster_info = Arc::new(RwLock::new(ClusterInfo::new_with_invalid_keypair(
+        let node_group_info = Arc::new(RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
             ContactInfo::default(),
         )));
         let leader = ContactInfo::new_with_socketaddr(&socketaddr!("127.0.0.1:1234"));
 
-        cluster_info.write().unwrap().insert_info(leader.clone());
+        node_group_info.write().unwrap().insert_info(leader.clone());
 
         let mut io = MetaIoHandler::default();
         let rpc = RpcSolImpl;
         io.extend_with(rpc.to_delegate());
         let meta = Meta {
             request_processor,
-            cluster_info,
+            node_group_info,
         };
         (io, meta, blockhash, alice, leader.id)
     }
@@ -963,7 +963,7 @@ mod tests {
                 );
                 Arc::new(RwLock::new(request_processor))
             },
-            cluster_info: Arc::new(RwLock::new(ClusterInfo::new_with_invalid_keypair(
+            node_group_info: Arc::new(RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
                 ContactInfo::default(),
             ))),
         };
@@ -982,11 +982,11 @@ mod tests {
 
     #[test]
     fn test_rpc_get_tpu_addr() {
-        let cluster_info = Arc::new(RwLock::new(ClusterInfo::new_with_invalid_keypair(
+        let node_group_info = Arc::new(RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
             ContactInfo::new_with_socketaddr(&socketaddr!("127.0.0.1:1234")),
         )));
         assert_eq!(
-            get_tpu_addr(&cluster_info),
+            get_tpu_addr(&node_group_info),
             Ok(socketaddr!("127.0.0.1:1234"))
         );
     }

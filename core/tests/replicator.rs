@@ -6,10 +6,10 @@ extern crate morgan;
 
 use bincode::{deserialize, serialize};
 use morgan::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
-use morgan::cluster_message::{ClusterInfo, Node, FULLNODE_PORT_RANGE};
+use morgan::node_group_info::{NodeGroupInfo, Node, FULLNODE_PORT_RANGE};
 use morgan::connection_info::ContactInfo;
-use morgan::gossip_service::discover_cluster;
-use morgan::local_cluster::{ClusterConfig, LocalCluster};
+use morgan::gossip_service::find_node_group_host;
+use morgan::local_node_group::{NodeGroupConfig, LocalNodeGroup};
 use morgan::cloner::StorageMiner;
 use morgan::cloner::StorageMinerRequest;
 use morgan::storage_stage::STORAGE_ROTATE_TEST_COUNT;
@@ -52,7 +52,7 @@ fn check_miner_connection(storage_miner_info: &ContactInfo) {
     // Create a client which downloads from the storage-miner and see that it
     // can respond with blobs.
     let tn = Node::new_localhost();
-    let cluster_info = ClusterInfo::new_with_invalid_keypair(tn.info.clone());
+    let node_group_info = NodeGroupInfo::new_with_invalid_keypair(tn.info.clone());
     let mut repair_index = get_slot_height(storage_miner_info.storage_addr);
     println!("{}",
         printLn(
@@ -61,7 +61,7 @@ fn check_miner_connection(storage_miner_info: &ContactInfo) {
         )
     );
     repair_index = 0;
-    let req = cluster_info
+    let req = node_group_info
         .window_index_request_bytes(0, repair_index)
         .unwrap();
 
@@ -126,27 +126,27 @@ fn run_miner_startup_basic(num_nodes: usize, miner_amnt: usize) {
     );
     let mut validator_config = ValidatorConfig::default();
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
-    let config = ClusterConfig {
+    let config = NodeGroupConfig {
         validator_config,
         miner_amnt,
         node_stakes: vec![100; num_nodes],
-        cluster_difs: 10_000,
-        ..ClusterConfig::default()
+        node_group_difs: 10_000,
+        ..NodeGroupConfig::default()
     };
-    let cluster = LocalCluster::new(&config);
+    let node_group = LocalNodeGroup::new(&config);
 
-    let (cluster_nodes, cluster_miners) = discover_cluster(
-        &cluster.entry_point_info.gossip,
+    let (node_group_hosts, node_group_miners) = find_node_group_host(
+        &node_group.entry_point_info.gossip,
         num_nodes + miner_amnt,
     )
     .unwrap();
     assert_eq!(
-        cluster_nodes.len() + cluster_miners.len(),
+        node_group_hosts.len() + node_group_miners.len(),
         num_nodes + miner_amnt
     );
     let mut storage_miner_cnt = 0;
     let mut storage_miner_info = ContactInfo::default();
-    for node in &cluster_miners {
+    for node in &node_group_miners {
         println!("{}",
             printLn(
                 format!("storage: {:?} rpc: {:?}", node.storage_addr, node.rpc).to_string(),
@@ -216,8 +216,8 @@ fn test_storage_miner_startup_leader_hang() {
     }
 
 
-    let _ignored = BlockBufferPool::destruct(&leader_ledger_path);
-    let _ignored = BlockBufferPool::destruct(&miner_ledger_path);
+    let _ignored = BlockBufferPool::remove_ledger_file(&leader_ledger_path);
+    let _ignored = BlockBufferPool::remove_ledger_file(&miner_ledger_path);
 
 
     let _ignored = remove_dir_all(&leader_ledger_path);
@@ -236,7 +236,7 @@ fn test_storage_miner_startup_ledger_hang() {
     );
     let mut validator_config = ValidatorConfig::default();
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
-    let cluster = LocalCluster::new_with_equal_stakes(2, 10_000, 100);;
+    let node_group = LocalNodeGroup::new_with_equal_stakes(2, 10_000, 100);;
 
     // info!("{}", Info(format!("starting storage-miner node").to_string()));
     println!("{}",
@@ -251,12 +251,12 @@ fn test_storage_miner_startup_ledger_hang() {
 
     // Pass bad TVU sockets to prevent successful ledger download
     storage_miner_node.sockets.tvu = vec![std::net::UdpSocket::bind("0.0.0.0:0").unwrap()];
-    let (miner_ledger_path, _blockhash) = create_new_tmp_ledger!(&cluster.genesis_block);
+    let (miner_ledger_path, _blockhash) = create_new_tmp_ledger!(&node_group.genesis_block);
 
     let storage_miner_res = StorageMiner::new(
         &miner_ledger_path,
         storage_miner_node,
-        cluster.entry_point_info.clone(),
+        node_group.entry_point_info.clone(),
         bad_keys,
         storage_keypair,
     );
@@ -270,26 +270,26 @@ fn test_account_setup() {
     let miner_amnt = 1;
     let mut validator_config = ValidatorConfig::default();
     validator_config.storage_rotate_count = STORAGE_ROTATE_TEST_COUNT;
-    let config = ClusterConfig {
+    let config = NodeGroupConfig {
         validator_config,
         miner_amnt,
         node_stakes: vec![100; num_nodes],
-        cluster_difs: 10_000,
-        ..ClusterConfig::default()
+        node_group_difs: 10_000,
+        ..NodeGroupConfig::default()
     };
-    let cluster = LocalCluster::new(&config);
+    let node_group = LocalNodeGroup::new(&config);
 
-    let _ = discover_cluster(
-        &cluster.entry_point_info.gossip,
+    let _ = find_node_group_host(
+        &node_group.entry_point_info.gossip,
         num_nodes + miner_amnt as usize,
     )
     .unwrap();
-    // now check that the cluster actually has accounts for the storage-miner.
+    // now check that the node group actually has accounts for the storage-miner.
     let client = create_client(
-        cluster.entry_point_info.client_facing_addr(),
+        node_group.entry_point_info.client_facing_addr(),
         FULLNODE_PORT_RANGE,
     );
-    cluster.storage_miner_infos.iter().for_each(|(_, value)| {
+    node_group.storage_miner_infos.iter().for_each(|(_, value)| {
         assert_eq!(
             client
                 .poll_get_balance(&value.miner_storage_pubkey)

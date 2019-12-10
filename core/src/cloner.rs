@@ -2,7 +2,7 @@ use crate::fetch_spot_stage::BlobFetchStage;
 use crate::block_buffer_pool::BlockBufferPool;
 #[cfg(feature = "chacha")]
 use crate::chacha::{chacha_cbc_encrypt_ledger, CHACHA_BLOCK_SIZE};
-use crate::cluster_message::{ClusterInfo, Node};
+use crate::node_group_info::{NodeGroupInfo, Node};
 use crate::connection_info::ContactInfo;
 use crate::gossip_service::GossipService;
 use crate::packet::to_shared_blob;
@@ -57,14 +57,14 @@ pub struct StorageMiner {
     keypair: Arc<Keypair>,
     storage_keypair: Arc<Keypair>,
     signature: ed25519_dalek::Signature,
-    cluster_info: Arc<RwLock<ClusterInfo>>,
+    node_group_info: Arc<RwLock<NodeGroupInfo>>,
     ledger_data_file_encrypted: PathBuf,
     sampling_offsets: Vec<u64>,
     hash: Hash,
     #[cfg(feature = "chacha")]
     num_chacha_blocks: usize,
     #[cfg(feature = "chacha")]
-    blocktree: Arc<BlockBufferPool>,
+    block_buffer_pool: Arc<BlockBufferPool>,
 }
 
 pub(crate) fn sample_file(in_path: &Path, sample_offsets: &[u64]) -> io::Result<Hash> {
@@ -175,13 +175,13 @@ impl StorageMiner {
     /// * `ledger_path` - path to where the ledger will be stored.
     /// Causes panic if none
     /// * `node` - The storage-miner node
-    /// * `cluster_entrypoint` - ContactInfo representing an entry into the network
+    /// * `node_group_entrypoint` - ContactInfo representing an entry into the network
     /// * `keypair` - Keypair for this storage-miner
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         ledger_path: &str,
         node: Node,
-        cluster_entrypoint: ContactInfo,
+        node_group_entrypoint: ContactInfo,
         keypair: Arc<Keypair>,
         storage_keypair: Arc<Keypair>,
     ) -> Result<Self> {
@@ -197,13 +197,13 @@ impl StorageMiner {
         );
         println!("{}",
             printLn(
-                format!("Creating cluster info....").to_string(),
+                format!("Node group information is being composed...").to_string(),
                 module_path!().to_string()
             )
         );
-        let mut cluster_info = ClusterInfo::new(node.info.clone(), keypair.clone());
-        cluster_info.set_entrypoint(cluster_entrypoint.clone());
-        let cluster_info = Arc::new(RwLock::new(cluster_info));
+        let mut node_group_info = NodeGroupInfo::new(node.info.clone(), keypair.clone());
+        node_group_info.set_entrypoint(node_group_entrypoint.clone());
+        let node_group_info = Arc::new(RwLock::new(node_group_info));
 
         // Note for now, this ledger will not contain any of the existing entries
         // in the ledger located at ledger_path, and will only append on newly received
@@ -212,29 +212,29 @@ impl StorageMiner {
             GenesisBlock::load(ledger_path).expect("Expected to successfully open genesis block");
         let bank = Bank::new_with_paths(&genesis_block, None);
         let genesis_blockhash = bank.last_blockhash();
-        let blocktree = Arc::new(
+        let block_buffer_pool = Arc::new(
             BlockBufferPool::open_ledger_file(ledger_path).expect("Expected to be able to open database ledger"),
         );
 
         let gossip_service = GossipService::new(
-            &cluster_info,
-            Some(blocktree.clone()),
+            &node_group_info,
+            Some(block_buffer_pool.clone()),
             None,
             node.sockets.gossip,
             &exit,
         );
 
-        // info!("{}", Info(format!("Connecting to the cluster via {:?}", cluster_entrypoint).to_string()));
+        // info!("{}", Info(format!("Connecting to the cluster via {:?}", node_group_entrypoint).to_string()));
         println!("{}",
             printLn(
-                format!("Connecting to the cluster via {:?}", cluster_entrypoint).to_string(),
+                format!("Connecting to the node group on entry point {:?}", node_group_entrypoint).to_string(),
                 module_path!().to_string()
             )
         );
-        let (nodes, _) = crate::gossip_service::discover_cluster(&cluster_entrypoint.gossip, 1)?;
+        let (nodes, _) = crate::gossip_service::find_node_group_host(&node_group_entrypoint.gossip, 1)?;
         let client = crate::gossip_service::get_client(&nodes);
 
-        let (storage_blockhash, storage_slot) = Self::poll_for_blockhash_and_slot(&cluster_info)?;
+        let (storage_blockhash, storage_slot) = Self::poll_for_blockhash_and_slot(&node_group_info)?;
 
         let signature = storage_keypair.sign(storage_blockhash.as_ref());
         let slot = get_slot_from_blockhash(&signature, storage_slot);
@@ -259,8 +259,8 @@ impl StorageMiner {
         let (retransmit_sender, retransmit_receiver) = channel();
 
         let window_service = WindowService::new(
-            blocktree.clone(),
-            cluster_info.clone(),
+            block_buffer_pool.clone(),
+            node_group_info.clone(),
             blob_fetch_receiver,
             retransmit_sender,
             repair_socket,
@@ -288,11 +288,11 @@ impl StorageMiner {
 
         let t_replicate = {
             let exit = exit.clone();
-            let blocktree = blocktree.clone();
-            let cluster_info = cluster_info.clone();
+            let block_buffer_pool = block_buffer_pool.clone();
+            let node_group_info = node_group_info.clone();
             let node_info = node.info.clone();
             spawn(move || {
-                Self::wait_for_ledger_download(slot, &blocktree, &exit, &node_info, cluster_info)
+                Self::wait_for_ledger_download(slot, &block_buffer_pool, &exit, &node_info, node_group_info)
             })
         };
         //always push this last
@@ -309,14 +309,14 @@ impl StorageMiner {
             keypair,
             storage_keypair,
             signature,
-            cluster_info,
+            node_group_info,
             ledger_data_file_encrypted: PathBuf::default(),
             sampling_offsets: vec![],
             hash: Hash::default(),
             #[cfg(feature = "chacha")]
             num_chacha_blocks: 0,
             #[cfg(feature = "chacha")]
-            blocktree,
+            block_buffer_pool,
         })
     }
 
@@ -352,10 +352,10 @@ impl StorageMiner {
 
     fn wait_for_ledger_download(
         start_slot: u64,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         node_info: &ContactInfo,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
     ) {
         // info!(
         //     "{}",
@@ -372,7 +372,7 @@ impl StorageMiner {
         );
         let mut current_slot = start_slot;
         'outer: loop {
-            while let Ok(meta) = blocktree.meta_info(current_slot) {
+            while let Ok(meta) = block_buffer_pool.meta_info(current_slot) {
                 if let Some(meta) = meta {
                     if meta.is_full() {
                         current_slot += 1;
@@ -411,8 +411,8 @@ impl StorageMiner {
         contact_info.tvu = "0.0.0.0:0".parse().unwrap();
         contact_info.wallclock = timestamp();
         {
-            let mut cluster_info_w = cluster_info.write().unwrap();
-            cluster_info_w.insert_self(contact_info);
+            let mut node_group_info_w = node_group_info.write().unwrap();
+            node_group_info_w.insert_self(contact_info);
         }
     }
 
@@ -426,7 +426,7 @@ impl StorageMiner {
             ivec.copy_from_slice(&self.signature.to_bytes());
 
             let num_encrypted_bytes = chacha_cbc_encrypt_ledger(
-                &self.blocktree,
+                &self.block_buffer_pool,
                 self.slot,
                 &self.ledger_data_file_encrypted,
                 &mut ivec,
@@ -524,7 +524,7 @@ impl StorageMiner {
 
     fn submit_mining_proof(&self) {
         // No point if we've got no storage account...
-        let nodes = self.cluster_info.read().unwrap().tvu_peers();
+        let nodes = self.node_group_info.read().unwrap().tvu_peers();
         let client = crate::gossip_service::get_client(&nodes);
         assert!(
             client
@@ -573,12 +573,12 @@ impl StorageMiner {
     }
 
     fn poll_for_blockhash_and_slot(
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
     ) -> Result<(String, u64)> {
         for _ in 0..10 {
             let rpc_client = {
-                let cluster_info = cluster_info.read().unwrap();
-                let rpc_peers = cluster_info.rpc_peers();
+                let node_group_info = node_group_info.read().unwrap();
+                let rpc_peers = node_group_info.rpc_peers();
                 debug!("rpc peers: {:?}", rpc_peers);
                 let node_index = thread_rng().gen_range(0, rpc_peers.len());
                 RpcClient::new_socket(rpc_peers[node_index].rpc)

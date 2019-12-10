@@ -1,4 +1,4 @@
-use crate::cluster_message::{ClusterInfo, GOSSIP_SLEEP_MILLIS};
+use crate::node_group_info::{NodeGroupInfo, GOSSIP_SLEEP_MILLIS};
 use crate::water_clock_recorder::WaterClockRecorder;
 use crate::result::Result;
 use crate::service::Service;
@@ -21,7 +21,7 @@ pub struct ClusterInfoVoteListener {
 impl ClusterInfoVoteListener {
     pub fn new(
         exit: &Arc<AtomicBool>,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
         sigverify_disabled: bool,
         sender: Sender<VerifiedPackets>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
@@ -33,7 +33,7 @@ impl ClusterInfoVoteListener {
             .spawn(move || {
                 let _ = Self::recv_loop(
                     exit,
-                    &cluster_info,
+                    &node_group_info,
                     sigverify_disabled,
                     &sender,
                     waterclock_recorder,
@@ -46,7 +46,7 @@ impl ClusterInfoVoteListener {
     }
     fn recv_loop(
         exit: Arc<AtomicBool>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         sigverify_disabled: bool,
         sender: &Sender<VerifiedPackets>,
         waterclock_recorder: Arc<Mutex<WaterClockRecorder>>,
@@ -56,10 +56,10 @@ impl ClusterInfoVoteListener {
             if exit.load(Ordering::Relaxed) {
                 return Ok(());
             }
-            let (votes, new_ts) = cluster_info.read().unwrap().get_votes(last_ts);
+            let (votes, new_ts) = node_group_info.read().unwrap().get_votes(last_ts);
             if waterclock_recorder.lock().unwrap().bank().is_some() {
                 last_ts = new_ts;
-                inc_new_counter_debug!("cluster_info_vote_listener-recv_count", votes.len());
+                inc_new_counter_debug!("node_group_info_vote_listener-recv_count", votes.len());
                 let msgs = packet::to_packets(&votes);
                 if !msgs.is_empty() {
                     let r = if sigverify_disabled {

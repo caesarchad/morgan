@@ -19,7 +19,7 @@ use std::env::VarError;
 // Then sample each block at the offsets provided by samples argument with sha256
 // and return the vec of sha states
 pub fn chacha_cbc_encrypt_file_many_keys(
-    blocktree: &Arc<BlockBufferPool>,
+    block_buffer_pool: &Arc<BlockBufferPool>,
     segment: u64,
     ivecs: &mut [u8],
     samples: &[u64],
@@ -48,7 +48,7 @@ pub fn chacha_cbc_encrypt_file_many_keys(
         chacha_init_sha_state(int_sha_states.as_mut_ptr(), num_keys as u32);
     }
     loop {
-        match blocktree.extract_objs_bytes(entry, SLOTS_PER_SEGMENT - total_entries, &mut buffer, 0) {
+        match block_buffer_pool.extract_objs_bytes(entry, SLOTS_PER_SEGMENT - total_entries, &mut buffer, 0) {
             Ok((num_entries, entry_len)) => {
                 debug!(
                     "chacha_cuda: encrypting segment: {} num_entries: {} entry_len: {}",
@@ -164,9 +164,9 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_single";
         let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
 
-        blocktree
+        block_buffer_pool
             .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
@@ -179,12 +179,12 @@ mod tests {
         );
 
         let mut cpu_iv = ivecs.clone();
-        chacha_cbc_encrypt_ledger(&blocktree, 0, out_path, &mut cpu_iv).unwrap();
+        chacha_cbc_encrypt_ledger(&block_buffer_pool, 0, out_path, &mut cpu_iv).unwrap();
 
         let ref_hash = sample_file(&out_path, &samples).unwrap();
 
         let hashes =
-            chacha_cbc_encrypt_file_many_keys(&blocktree, 0, &mut ivecs, &samples).unwrap();
+            chacha_cbc_encrypt_file_many_keys(&block_buffer_pool, 0, &mut ivecs, &samples).unwrap();
 
         assert_eq!(hashes[0], ref_hash);
 
@@ -200,8 +200,8 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_multiple";
         let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
-        blocktree
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        block_buffer_pool
             .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
@@ -217,7 +217,7 @@ mod tests {
             );
             ivec[0] = i;
             ivecs.extend(ivec.clone().iter());
-            chacha_cbc_encrypt_ledger(&blocktree.clone(), 0, out_path, &mut ivec).unwrap();
+            chacha_cbc_encrypt_ledger(&block_buffer_pool.clone(), 0, out_path, &mut ivec).unwrap();
 
             ref_hashes.push(sample_file(&out_path, &samples).unwrap());
             // info!(
@@ -240,7 +240,7 @@ mod tests {
         }
 
         let hashes =
-            chacha_cbc_encrypt_file_many_keys(&blocktree, 0, &mut ivecs, &samples).unwrap();
+            chacha_cbc_encrypt_file_many_keys(&block_buffer_pool, 0, &mut ivecs, &samples).unwrap();
 
         assert_eq!(hashes, ref_hashes);
 
@@ -254,7 +254,7 @@ mod tests {
         let ledger_dir = "test_encrypt_file_many_keys_bad_key_length";
         let ledger_path = fetch_interim_bill_route(ledger_dir);
         let samples = [0];
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
-        assert!(chacha_cbc_encrypt_file_many_keys(&blocktree, 0, &mut keys, &samples,).is_err());
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        assert!(chacha_cbc_encrypt_file_many_keys(&block_buffer_pool, 0, &mut keys, &samples,).is_err());
     }
 }

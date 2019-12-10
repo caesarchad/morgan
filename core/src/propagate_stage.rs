@@ -1,7 +1,7 @@
 //! A stage to broadcast data from a leader node to validators
 //!
 use crate::block_buffer_pool::BlockBufferPool;
-use crate::cluster_message::{ClusterInfo, ClusterInfoError, DATA_PLANE_FANOUT};
+use crate::node_group_info::{NodeGroupInfo, NodeGroupInfoError, DATA_PLANE_FANOUT};
 use crate::entry_info::EntrySlice;
 use crate::expunge::CodingGenerator;
 use crate::packet::index_blobs_with_genesis;
@@ -46,10 +46,10 @@ struct Broadcast {
 impl Broadcast {
     fn run(
         &mut self,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         receiver: &Receiver<WorkingBankEntries>,
         sock: &UdpSocket,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> Result<()> {
         let timer = Duration::new(1, 0);
@@ -84,7 +84,7 @@ impl Broadcast {
         }
 
         let bank_epoch = bank.get_stakers_epoch(bank.slot());
-        let mut broadcast_table = cluster_info
+        let mut broadcast_table = node_group_info
             .read()
             .unwrap()
             .sorted_tvu_peers(staking_utils::staked_nodes_at_epoch(&bank, bank_epoch).as_ref());
@@ -106,7 +106,7 @@ impl Broadcast {
             .flatten()
             .collect();
 
-        let blob_index = blocktree
+        let blob_index = block_buffer_pool
             .meta_info(bank.slot())
             .expect("Database error")
             .map(|meta| meta.consumed)
@@ -127,7 +127,7 @@ impl Broadcast {
             blobs.last().unwrap().write().unwrap().set_is_last_in_slot();
         }
 
-        blocktree.record_public_objs(&blobs)?;
+        block_buffer_pool.record_public_objs(&blobs)?;
 
         let coding = self.coding_generator.next(&blobs);
 
@@ -136,12 +136,12 @@ impl Broadcast {
         let broadcast_start = Instant::now();
 
         // Send out data
-        ClusterInfo::broadcast(&self.id, contains_last_tick, &broadcast_table, sock, &blobs)?;
+        NodeGroupInfo::broadcast(&self.id, contains_last_tick, &broadcast_table, sock, &blobs)?;
 
         inc_new_counter_debug!("streamer-broadcast-sent", blobs.len());
 
         // send out erasures
-        ClusterInfo::broadcast(&self.id, false, &broadcast_table, sock, &coding)?;
+        NodeGroupInfo::broadcast(&self.id, false, &broadcast_table, sock, &coding)?;
 
         self.update_broadcast_stats(
             duration_as_ms(&broadcast_start.elapsed()),
@@ -216,12 +216,12 @@ impl BroadcastStage {
     #[allow(clippy::too_many_arguments)]
     fn run(
         sock: &UdpSocket,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         receiver: &Receiver<WorkingBankEntries>,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> BroadcastStageReturnType {
-        let me = cluster_info.read().unwrap().my_data().clone();
+        let me = node_group_info.read().unwrap().my_data().clone();
         let coding_generator = CodingGenerator::default();
 
         let mut broadcast = Broadcast {
@@ -232,14 +232,14 @@ impl BroadcastStage {
 
         loop {
             if let Err(e) =
-                broadcast.run(&cluster_info, receiver, sock, blocktree, genesis_blockhash)
+                broadcast.run(&node_group_info, receiver, sock, block_buffer_pool, genesis_blockhash)
             {
                 match e {
                     Error::RecvTimeoutError(RecvTimeoutError::Disconnected) | Error::SendError => {
                         return BroadcastStageReturnType::ChannelDisconnected;
                     }
                     Error::RecvTimeoutError(RecvTimeoutError::Timeout) => (),
-                    Error::ClusterInfoError(ClusterInfoError::NoPeers) => (), // TODO: Why are the unit-tests throwing hundreds of these?
+                    Error::NodeGroupInfoError(NodeGroupInfoError::NoPeers) => (), // TODO: Why are the unit-tests throwing hundreds of these?
                     _ => {
                         inc_new_counter_error!("streamer-broadcaster-error", 1, 1);
                         // error!("{}", Error(format!("broadcaster error: {:?}", e).to_string()));
@@ -257,11 +257,11 @@ impl BroadcastStage {
     }
 
     /// Service to broadcast messages from the leader to layer 1 nodes.
-    /// See `cluster_info` for network layer definitions.
+    /// See `node_group_info` for network layer definitions.
     /// # Arguments
     /// * `sock` - Socket to send from.
     /// * `exit` - Boolean to signal system exit.
-    /// * `cluster_info` - ClusterInfo structure
+    /// * `node_group_info` - NodeGroupInfo structure
     /// * `window` - Cache of blobs that we have broadcast
     /// * `receiver` - Receive channel for blobs to be retransmitted to all the layer 1 nodes.
     /// * `exit_sender` - Set to true when this service exits, allows rest of Tpu to exit cleanly.
@@ -274,13 +274,13 @@ impl BroadcastStage {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         sock: UdpSocket,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
         receiver: Receiver<WorkingBankEntries>,
         exit_sender: &Arc<AtomicBool>,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         genesis_blockhash: &Hash,
     ) -> Self {
-        let blocktree = blocktree.clone();
+        let block_buffer_pool = block_buffer_pool.clone();
         let exit_sender = exit_sender.clone();
         let genesis_blockhash = *genesis_blockhash;
         let thread_hdl = Builder::new()
@@ -289,9 +289,9 @@ impl BroadcastStage {
                 let _finalizer = Finalizer::new(exit_sender);
                 Self::run(
                     &sock,
-                    &cluster_info,
+                    &node_group_info,
                     &receiver,
-                    &blocktree,
+                    &block_buffer_pool,
                     &genesis_blockhash,
                 )
             })
@@ -313,7 +313,7 @@ impl Service for BroadcastStage {
 mod test {
     use super::*;
     use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
-    use crate::cluster_message::{ClusterInfo, Node};
+    use crate::node_group_info::{NodeGroupInfo, Node};
     use crate::entry_info::create_ticks;
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
     use crate::service::Service;
@@ -327,7 +327,7 @@ mod test {
     use std::time::Duration;
 
     struct MockBroadcastStage {
-        blocktree: Arc<BlockBufferPool>,
+        block_buffer_pool: Arc<BlockBufferPool>,
         broadcast_service: BroadcastStage,
         bank: Arc<Bank>,
     }
@@ -338,7 +338,7 @@ mod test {
         entry_receiver: Receiver<WorkingBankEntries>,
     ) -> MockBroadcastStage {
         // Make the database ledger
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(ledger_path).unwrap());
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(ledger_path).unwrap());
 
         // Make the leader node and scheduler
         let leader_info = Node::new_localhost_with_pubkey(leader_pubkey);
@@ -347,10 +347,10 @@ mod test {
         let buddy_keypair = Keypair::new();
         let broadcast_buddy = Node::new_localhost_with_pubkey(&buddy_keypair.pubkey());
 
-        // Fill the cluster_info with the buddy's info
-        let mut cluster_info = ClusterInfo::new_with_invalid_keypair(leader_info.info.clone());
-        cluster_info.insert_info(broadcast_buddy.info);
-        let cluster_info = Arc::new(RwLock::new(cluster_info));
+        // Fill the node_group_info with the buddy's info
+        let mut node_group_info = NodeGroupInfo::new_with_invalid_keypair(leader_info.info.clone());
+        node_group_info.insert_info(broadcast_buddy.info);
+        let node_group_info = Arc::new(RwLock::new(node_group_info));
 
         let exit_sender = Arc::new(AtomicBool::new(false));
 
@@ -360,15 +360,15 @@ mod test {
         // Start up the broadcast stage
         let broadcast_service = BroadcastStage::new(
             leader_info.sockets.broadcast,
-            cluster_info,
+            node_group_info,
             entry_receiver,
             &exit_sender,
-            &blocktree,
+            &block_buffer_pool,
             &Hash::default(),
         );
 
         MockBroadcastStage {
-            blocktree,
+            block_buffer_pool,
             broadcast_service,
             bank,
         }
@@ -410,12 +410,12 @@ mod test {
                 ticks_per_slot,
             );
 
-            let blocktree = broadcast_service.blocktree;
+            let block_buffer_pool = broadcast_service.block_buffer_pool;
             let mut blob_index = 0;
             for i in 0..max_tick_height - start_tick_height {
                 let slot = (start_tick_height + i + 1) / ticks_per_slot;
 
-                let result = blocktree.fetch_info_obj(slot, blob_index).unwrap();
+                let result = block_buffer_pool.fetch_info_obj(slot, blob_index).unwrap();
 
                 blob_index += 1;
                 result.expect("expect blob presence");
@@ -428,6 +428,6 @@ mod test {
                 .expect("Expect successful join of broadcast service");
         }
 
-        BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
     }
 }

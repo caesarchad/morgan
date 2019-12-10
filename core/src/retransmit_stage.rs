@@ -3,7 +3,7 @@
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
-use crate::cluster_message::{compute_retransmit_peers, ClusterInfo, DATA_PLANE_FANOUT};
+use crate::node_group_info::{compute_retransmit_peers, NodeGroupInfo, DATA_PLANE_FANOUT};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::fix_missing_spot_service::RepairStrategy;
 use crate::result::{Error, Result};
@@ -25,7 +25,7 @@ use std::time::Duration;
 fn retransmit(
     bank_forks: &Arc<RwLock<BankForks>>,
     leader_schedule_cache: &Arc<LeaderScheduleCache>,
-    cluster_info: &Arc<RwLock<ClusterInfo>>,
+    node_group_info: &Arc<RwLock<NodeGroupInfo>>,
     r: &BlobReceiver,
     sock: &UdpSocket,
 ) -> Result<()> {
@@ -41,35 +41,35 @@ fn retransmit(
     let bank_epoch = r_bank.get_stakers_epoch(r_bank.slot());
     let (neighbors, children) = compute_retransmit_peers(
         staking_utils::staked_nodes_at_epoch(&r_bank, bank_epoch).as_ref(),
-        cluster_info,
+        node_group_info,
         DATA_PLANE_FANOUT,
     );
     for blob in &blobs {
         let leader = leader_schedule_cache
             .slot_leader_at(blob.read().unwrap().slot(), Some(r_bank.as_ref()));
         if blob.read().unwrap().meta.forward {
-            ClusterInfo::retransmit_to(&cluster_info, &neighbors, blob, leader, sock, true)?;
-            ClusterInfo::retransmit_to(&cluster_info, &children, blob, leader, sock, false)?;
+            NodeGroupInfo::retransmit_to(&node_group_info, &neighbors, blob, leader, sock, true)?;
+            NodeGroupInfo::retransmit_to(&node_group_info, &children, blob, leader, sock, false)?;
         } else {
-            ClusterInfo::retransmit_to(&cluster_info, &children, blob, leader, sock, true)?;
+            NodeGroupInfo::retransmit_to(&node_group_info, &children, blob, leader, sock, true)?;
         }
     }
     Ok(())
 }
 
 /// Service to retransmit messages from the leader or layer 1 to relevant peer nodes.
-/// See `cluster_info` for network layer definitions.
+/// See `node_group_info` for network layer definitions.
 /// # Arguments
 /// * `sock` - Socket to read from.  Read timeout is set to 1.
 /// * `exit` - Boolean to signal system exit.
-/// * `cluster_info` - This structure needs to be updated and populated by the bank and via gossip.
+/// * `node_group_info` - This structure needs to be updated and populated by the bank and via gossip.
 /// * `recycler` - Blob recycler.
 /// * `r` - Receive channel for blobs to be retransmitted to all the layer 1 nodes.
 fn retransmitter(
     sock: Arc<UdpSocket>,
     bank_forks: Arc<RwLock<BankForks>>,
     leader_schedule_cache: &Arc<LeaderScheduleCache>,
-    cluster_info: Arc<RwLock<ClusterInfo>>,
+    node_group_info: Arc<RwLock<NodeGroupInfo>>,
     r: BlobReceiver,
 ) -> JoinHandle<()> {
     let bank_forks = bank_forks.clone();
@@ -82,7 +82,7 @@ fn retransmitter(
                 if let Err(e) = retransmit(
                     &bank_forks,
                     &leader_schedule_cache,
-                    &cluster_info,
+                    &node_group_info,
                     &r,
                     &sock,
                 ) {
@@ -175,8 +175,8 @@ impl RetransmitStage {
     pub fn new(
         bank_forks: Arc<RwLock<BankForks>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
-        blocktree: Arc<BlockBufferPool>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        block_buffer_pool: Arc<BlockBufferPool>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         retransmit_socket: Arc<UdpSocket>,
         repair_socket: Arc<UdpSocket>,
         fetch_stage_receiver: BlobReceiver,
@@ -191,7 +191,7 @@ impl RetransmitStage {
             retransmit_socket,
             bank_forks.clone(),
             leader_schedule_cache,
-            cluster_info.clone(),
+            node_group_info.clone(),
             retransmit_receiver,
         );
 
@@ -202,8 +202,8 @@ impl RetransmitStage {
         };
         let leader_schedule_cache = leader_schedule_cache.clone();
         let window_service = WindowService::new(
-            blocktree,
-            cluster_info.clone(),
+            block_buffer_pool,
+            node_group_info.clone(),
             fetch_stage_receiver,
             retransmit_sender,
             repair_socket,

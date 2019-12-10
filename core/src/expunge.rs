@@ -1,45 +1,3 @@
-//! # Erasure Coding and Recovery
-//!
-//! Blobs are logically grouped into erasure sets or blocks. Each set contains 16 sequential data
-//! blobs and 4 sequential coding blobs.
-//!
-//! Coding blobs in each set starting from `start_idx`:
-//!   For each erasure set:
-//!     generate `NUM_CODING` coding_blobs.
-//!     index the coding blobs from `start_idx` to `start_idx + NUM_CODING - 1`.
-//!
-//!  model of an erasure set, with top row being data blobs and second being coding
-//!  |<======================= NUM_DATA ==============================>|
-//!  |<==== NUM_CODING ===>|
-//!  +---+ +---+ +---+ +---+ +---+         +---+ +---+ +---+ +---+ +---+
-//!  | D | | D | | D | | D | | D |         | D | | D | | D | | D | | D |
-//!  +---+ +---+ +---+ +---+ +---+  . . .  +---+ +---+ +---+ +---+ +---+
-//!  | C | | C | | C | | C | |   |         |   | |   | |   | |   | |   |
-//!  +---+ +---+ +---+ +---+ +---+         +---+ +---+ +---+ +---+ +---+
-//!
-//!  blob structure for coding blobs
-//!
-//!   + ------- meta is set and used by transport, meta.size is actual length
-//!   |           of data in the byte array blob.data
-//!   |
-//!   |          + -- data is stuff shipped over the wire, and has an included
-//!   |          |        header
-//!   V          V
-//!  +----------+------------------------------------------------------------+
-//!  | meta     |  data                                                      |
-//!  |+---+--   |+---+---+---+---+------------------------------------------+|
-//!  || s | .   || i |   | f | s |                                          ||
-//!  || i | .   || n | i | l | i |                                          ||
-//!  || z | .   || d | d | a | z |     blob.data(), or blob.data_mut()      ||
-//!  || e |     || e |   | g | e |                                          ||
-//!  |+---+--   || x |   | s |   |                                          ||
-//!  |          |+---+---+---+---+------------------------------------------+|
-//!  +----------+------------------------------------------------------------+
-//!             |                |<=== coding blob part for "coding" =======>|
-//!             |                                                            |
-//!             |<============== data blob part for "coding"  ==============>|
-//!
-//!
 use crate::packet::{Blob, SharedBlob, BLOB_HEADER_SIZE};
 use std::cmp;
 use std::convert::AsMut;
@@ -47,25 +5,22 @@ use std::sync::{Arc, RwLock};
 
 use reed_solomon_erasure::ReedSolomon;
 
-//TODO(sakridge) pick these values
-/// Number of data blobs
 pub const NUM_DATA: usize = 8;
-/// Number of coding blobs; also the maximum number that can go missing.
+
 pub const NUM_CODING: usize = 8;
-/// Total number of blobs in an erasure set; includes data and coding blobs
+
 pub const ERASURE_SET_SIZE: usize = NUM_DATA + NUM_CODING;
 
 type Result<T> = std::result::Result<T, reed_solomon_erasure::Error>;
 
-/// Represents an erasure "session" with a particular configuration and number of data and coding
-/// blobs
+
 #[derive(Debug, Clone)]
 pub struct Session(ReedSolomon);
 
-/// Generates coding blobs on demand given data blobs
+
 #[derive(Debug, Clone)]
 pub struct CodingGenerator {
-    /// SharedBlobs that couldn't be used in last call to next()
+   
     leftover: Vec<SharedBlob>,
     session: Arc<Session>,
 }
@@ -122,7 +77,7 @@ impl Session {
         // Decode the blocks
         self.decode_blocks(blocks.as_mut_slice(), &present)?;
 
-        let mut recovered_data = vec![];
+        let mut restored_data = vec![];
         let mut recovered_coding = vec![];
 
         let erasures = present
@@ -144,7 +99,7 @@ impl Session {
                 first_byte = blob.data[0];
 
                 blob.set_size(data_size);
-                recovered_data.push(blob);
+                restored_data.push(blob);
             } else {
                 let mut blob = Blob::default();
                 blob.data_mut()[..size].copy_from_slice(&blocks[n]);
@@ -167,7 +122,7 @@ impl Session {
             );
         }
 
-        Ok((recovered_data, recovered_coding))
+        Ok((restored_data, recovered_coding))
     }
 }
 
@@ -287,7 +242,7 @@ pub mod test {
     use std::borrow::Borrow;
 
     /// Specifies the contents of a 16-data-blob and 4-coding-blob erasure set
-    /// Exists to be passed to `generate_blocktree_with_coding`
+    /// Exists to be passed to `generate_block_buffer_with_coding`
     #[derive(Debug, Copy, Clone)]
     pub struct ErasureSpec {
         /// Which 16-blob erasure set this represents
@@ -297,7 +252,7 @@ pub mod test {
     }
 
     /// Specifies the contents of a slot
-    /// Exists to be passed to `generate_blocktree_with_coding`
+    /// Exists to be passed to `generate_block_buffer_with_coding`
     #[derive(Debug, Clone)]
     pub struct SlotSpec {
         pub slot: u64,
@@ -398,11 +353,11 @@ pub mod test {
         present[0] = false;
         present[NUM_DATA] = false;
 
-        let (recovered_data, recovered_coding) = session
+        let (restored_data, recovered_coding) = session
             .reconstruct_shared_blobs(&mut blobs, &present, size, block_start_idx as u64, 0)
             .expect("reconstruction must succeed");
 
-        assert_eq!(recovered_data.len(), 1);
+        assert_eq!(restored_data.len(), 1);
         assert_eq!(recovered_coding.len(), 1);
 
         assert_eq!(
@@ -414,11 +369,11 @@ pub mod test {
             data_blobs[block_start_idx + 1].read().unwrap().data()
         );
         assert_eq!(
-            recovered_data[0].meta,
+            restored_data[0].meta,
             data_blobs[block_start_idx].read().unwrap().meta
         );
         assert_eq!(
-            recovered_data[0].data(),
+            restored_data[0].data(),
             data_blobs[block_start_idx].read().unwrap().data()
         );
         assert_eq!(
@@ -494,7 +449,7 @@ pub mod test {
     }
 
     #[test]
-    fn test_erasure_generate_blocktree_with_coding() {
+    fn test_erasure_generate_block_buffer_with_coding() {
         let cases = vec![
             (NUM_DATA, NUM_CODING, 7, 5),
             (NUM_DATA - 6, NUM_CODING - 1, 5, 7),
@@ -517,7 +472,7 @@ pub mod test {
                 })
                 .collect::<Vec<_>>();
 
-            let blocktree = generate_blocktree_with_coding(&ledger_path, &specs);
+            let block_buffer_pool = generate_block_buffer_with_coding(&ledger_path, &specs);
 
             for spec in specs.iter() {
                 let slot = spec.slot;
@@ -530,19 +485,19 @@ pub mod test {
                     );
 
                     for idx in start_index..data_end {
-                        let opt_bytes = blocktree.fetch_info_obj_bytes(slot, idx).unwrap();
+                        let opt_bytes = block_buffer_pool.fetch_info_obj_bytes(slot, idx).unwrap();
                         assert!(opt_bytes.is_some());
                     }
 
                     for idx in start_index..coding_end {
-                        let opt_bytes = blocktree.fetch_encrypting_obj_bytes(slot, idx).unwrap();
+                        let opt_bytes = block_buffer_pool.fetch_encrypting_obj_bytes(slot, idx).unwrap();
                         assert!(opt_bytes.is_some());
                     }
                 }
             }
 
-            drop(blocktree);
-            BlockBufferPool::destruct(&ledger_path).expect("Expect successful blocktree destruction");
+            drop(block_buffer_pool);
+            BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expect successful block_buffer_pool destruction");
         }
     }
 
@@ -697,19 +652,19 @@ pub mod test {
     /// Genarates a ledger according to the given specs.
     /// BlockBufferPool should have correct SlotMeta and ErasureMeta and so on but will not have done any
     /// possible recovery.
-    pub fn generate_blocktree_with_coding(ledger_path: &str, specs: &[SlotSpec]) -> BlockBufferPool {
-        let blocktree = BlockBufferPool::open_ledger_file(ledger_path).unwrap();
+    pub fn generate_block_buffer_with_coding(ledger_path: &str, specs: &[SlotSpec]) -> BlockBufferPool {
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(ledger_path).unwrap();
 
         let model = generate_ledger_model(specs);
         for slot_model in model {
             let slot = slot_model.slot;
 
             for erasure_set in slot_model.chunks {
-                blocktree.record_public_objs(erasure_set.data).unwrap();
+                block_buffer_pool.record_public_objs(erasure_set.data).unwrap();
 
                 for shared_coding_blob in erasure_set.coding.into_iter() {
                     let blob = shared_coding_blob.read().unwrap();
-                    blocktree
+                    block_buffer_pool
                         .place_encrypting_obj_bytes_plain(
                             slot,
                             blob.index(),
@@ -720,7 +675,7 @@ pub mod test {
             }
         }
 
-        blocktree
+        block_buffer_pool
     }
 
     //    fn verify_test_blobs(offset: usize, blobs: &[SharedBlob]) -> bool {

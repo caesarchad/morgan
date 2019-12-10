@@ -7,7 +7,7 @@ use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::BlockBufferPool;
 #[cfg(all(feature = "chacha", feature = "cuda"))]
 use crate::chacha_cuda::chacha_cbc_encrypt_file_many_keys;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::result::{Error, Result};
 use crate::service::Service;
 use bincode::deserialize;
@@ -134,13 +134,13 @@ impl StorageStage {
     pub fn new(
         storage_state: &StorageState,
         slot_receiver: Receiver<Vec<u64>>,
-        blocktree: Option<Arc<BlockBufferPool>>,
+        block_buffer_pool: Option<Arc<BlockBufferPool>>,
         keypair: &Arc<Keypair>,
         storage_keypair: &Arc<Keypair>,
         exit: &Arc<AtomicBool>,
         bank_forks: &Arc<RwLock<BankForks>>,
         storage_rotate_count: u64,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
     ) -> Self {
         let (instruction_sender, instruction_receiver) = channel();
 
@@ -155,12 +155,12 @@ impl StorageStage {
                     let mut slot_count = 0;
                     let mut last_root = 0;
                     loop {
-                        if let Some(ref some_blocktree) = blocktree {
+                        if let Some(ref some_block_buffer) = block_buffer_pool {
                             if let Err(e) = Self::process_entries(
                                 &storage_keypair,
                                 &storage_state_inner,
                                 &slot_receiver,
-                                &some_blocktree,
+                                &some_block_buffer,
                                 &mut slot_count,
                                 &mut last_root,
                                 &mut current_key,
@@ -193,7 +193,7 @@ impl StorageStage {
         };
 
         let t_storage_create_accounts = {
-            let cluster_info = cluster_info.clone();
+            let node_group_info = node_group_info.clone();
             let exit = exit.clone();
             let keypair = keypair.clone();
             let storage_keypair = storage_keypair.clone();
@@ -223,7 +223,7 @@ impl StorageStage {
                             Ok(instruction) => {
                                 Self::send_transaction(
                                     &bank_forks,
-                                    &cluster_info,
+                                    &node_group_info,
                                     instruction,
                                     &keypair,
                                     &storage_keypair,
@@ -262,7 +262,7 @@ impl StorageStage {
 
     fn send_transaction(
         bank_forks: &Arc<RwLock<BankForks>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         instruction: Instruction,
         keypair: &Arc<Keypair>,
         storage_keypair: &Arc<Keypair>,
@@ -312,7 +312,7 @@ impl StorageStage {
 
         transactions_socket.send_to(
             &bincode::serialize(&transaction).unwrap(),
-            cluster_info.read().unwrap().my_data().tpu,
+            node_group_info.read().unwrap().my_data().tpu,
         )?;
         Ok(())
     }
@@ -320,7 +320,7 @@ impl StorageStage {
     fn process_entry_crossing(
         storage_keypair: &Arc<Keypair>,
         state: &Arc<RwLock<StorageStateInner>>,
-        _blocktree: &Arc<BlockBufferPool>,
+        _block_buffer_pool: &Arc<BlockBufferPool>,
         entry_id: Hash,
         slot: u64,
         instruction_sender: &InstructionSender,
@@ -379,7 +379,7 @@ impl StorageStage {
             let mut statew = state.write().unwrap();
 
             match chacha_cbc_encrypt_file_many_keys(
-                _blocktree,
+                _block_buffer_pool,
                 segment as u64,
                 &mut statew.storage_keys,
                 &samples,
@@ -467,7 +467,7 @@ impl StorageStage {
         storage_keypair: &Arc<Keypair>,
         storage_state: &Arc<RwLock<StorageStateInner>>,
         slot_receiver: &Receiver<Vec<u64>>,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         slot_count: &mut u64,
         last_root: &mut u64,
         current_key_idx: &mut usize,
@@ -482,7 +482,7 @@ impl StorageStage {
                 *slot_count += 1;
                 *last_root = slot;
 
-                if let Ok(entries) = blocktree.fetch_slit_items(slot, 0, None) {
+                if let Ok(entries) = block_buffer_pool.fetch_slit_items(slot, 0, None) {
                     for entry in &entries {
                         // Go through the transactions, find proofs, and use them to update
                         // the storage_keys with their signatures
@@ -514,7 +514,7 @@ impl StorageStage {
                         Self::process_entry_crossing(
                             &storage_keypair,
                             &storage_state,
-                            &blocktree,
+                            &block_buffer_pool,
                             entries.last().unwrap().hash,
                             slot,
                             instruction_sender,
@@ -581,7 +581,7 @@ impl Service for StorageStage {
 mod tests {
     use super::*;
     use crate::block_buffer_pool::{create_new_tmp_ledger, BlockBufferPool};
-    use crate::cluster_message::ClusterInfo;
+    use crate::node_group_info::NodeGroupInfo;
     use crate::connection_info::ContactInfo;
     use crate::entry_info::{make_tiny_test_entries, Entry};
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
@@ -606,7 +606,7 @@ mod tests {
         let storage_keypair = Arc::new(Keypair::new());
         let exit = Arc::new(AtomicBool::new(false));
 
-        let cluster_info = test_cluster_info(&keypair.pubkey());
+        let node_group_info = test_node_group_info(&keypair.pubkey());
         let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(1000);
         let bank = Arc::new(Bank::new(&genesis_block));
         let bank_forks = Arc::new(RwLock::new(BankForks::new_from_banks(&[bank], 0)));
@@ -621,16 +621,16 @@ mod tests {
             &exit.clone(),
             &bank_forks,
             STORAGE_ROTATE_TEST_COUNT,
-            &cluster_info,
+            &node_group_info,
         );
         exit.store(true, Ordering::Relaxed);
         storage_stage.join().unwrap();
     }
 
-    fn test_cluster_info(id: &Pubkey) -> Arc<RwLock<ClusterInfo>> {
+    fn test_node_group_info(id: &Pubkey) -> Arc<RwLock<NodeGroupInfo>> {
         let contact_info = ContactInfo::new_localhost(id, 0);
-        let cluster_info = ClusterInfo::new_with_invalid_keypair(contact_info);
-        Arc::new(RwLock::new(cluster_info))
+        let node_group_info = NodeGroupInfo::new_with_invalid_keypair(contact_info);
+        Arc::new(RwLock::new(node_group_info))
     }
 
     #[test]
@@ -645,28 +645,28 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(64);
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         let slot = 1;
         let bank = Arc::new(Bank::new(&genesis_block));
         let bank_forks = Arc::new(RwLock::new(BankForks::new_from_banks(&[bank], 0)));
-        blocktree
+        block_buffer_pool
             .record_items(slot, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
-        let cluster_info = test_cluster_info(&keypair.pubkey());
+        let node_group_info = test_node_group_info(&keypair.pubkey());
 
         let (slot_sender, slot_receiver) = channel();
         let storage_state = StorageState::new();
         let storage_stage = StorageStage::new(
             &storage_state,
             slot_receiver,
-            Some(blocktree.clone()),
+            Some(block_buffer_pool.clone()),
             &keypair,
             &storage_keypair,
             &exit.clone(),
             &bank_forks,
             STORAGE_ROTATE_TEST_COUNT,
-            &cluster_info,
+            &node_group_info,
         );
         slot_sender.send(vec![slot]).unwrap();
 
@@ -678,7 +678,7 @@ mod tests {
 
         let rooted_slots = (slot..slot + SLOTS_PER_SEGMENT + 1)
             .map(|i| {
-                blocktree
+                block_buffer_pool
                     .record_items(i, 0, 0, ticks_per_slot, &entries)
                     .unwrap();
                 i
@@ -738,26 +738,26 @@ mod tests {
         let (ledger_path, _blockhash) = create_new_tmp_ledger!(&genesis_block);
 
         let entries = make_tiny_test_entries(128);
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
-        blocktree
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        block_buffer_pool
             .record_items(1, 0, 0, ticks_per_slot, &entries)
             .unwrap();
         let bank = Arc::new(Bank::new(&genesis_block));
         let bank_forks = Arc::new(RwLock::new(BankForks::new_from_banks(&[bank], 0)));
-        let cluster_info = test_cluster_info(&keypair.pubkey());
+        let node_group_info = test_node_group_info(&keypair.pubkey());
 
         let (slot_sender, slot_receiver) = channel();
         let storage_state = StorageState::new();
         let storage_stage = StorageStage::new(
             &storage_state,
             slot_receiver,
-            Some(blocktree.clone()),
+            Some(block_buffer_pool.clone()),
             &keypair,
             &storage_keypair,
             &exit.clone(),
             &bank_forks,
             STORAGE_ROTATE_TEST_COUNT,
-            &cluster_info,
+            &node_group_info,
         );
         slot_sender.send(vec![1]).unwrap();
 
@@ -779,7 +779,7 @@ mod tests {
         let mining_txs = vec![mining_proof_tx];
 
         let proof_entries = vec![Entry::new(&Hash::default(), 1, mining_txs)];
-        blocktree
+        block_buffer_pool
             .record_items(2, 0, 0, ticks_per_slot, &proof_entries)
             .unwrap();
         slot_sender.send(vec![2]).unwrap();

@@ -1,7 +1,7 @@
 use hashbrown::{HashMap, HashSet};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::prelude::*;
-use morgan::cluster_message::{compute_retransmit_peers, ClusterInfo};
+use morgan::node_group_info::{compute_retransmit_peers, NodeGroupInfo};
 use morgan::connection_info::ContactInfo;
 use morgan_interface::pubkey::Pubkey;
 use std::sync::mpsc::channel;
@@ -33,7 +33,7 @@ fn run_simulation(stakes: &[u64], fanout: usize) {
 
     // describe the leader
     let leader_info = ContactInfo::new_localhost(&Pubkey::new_rand(), 0);
-    let mut cluster_info = ClusterInfo::new_with_invalid_keypair(leader_info.clone());
+    let mut node_group_info = NodeGroupInfo::new_with_invalid_keypair(leader_info.clone());
 
     // setup staked nodes
     let mut staked_nodes = HashMap::new();
@@ -57,7 +57,7 @@ fn run_simulation(stakes: &[u64], fanout: usize) {
             let batch_ix = *i as usize % batches.len();
             let node = ContactInfo::new_localhost(&Pubkey::new_rand(), 0);
             staked_nodes.insert(node.id, stakes[*i - 1]);
-            cluster_info.insert_info(node.clone());
+            node_group_info.insert_info(node.clone());
             let (s, r) = channel();
             batches
                 .get_mut(batch_ix)
@@ -66,15 +66,15 @@ fn run_simulation(stakes: &[u64], fanout: usize) {
             senders.lock().unwrap().insert(node.id, s);
         })
     });
-    let c_info = cluster_info.clone();
+    let c_info = node_group_info.clone();
 
     // create some "blobs".
     let blobs: Vec<(_, _)> = (0..100).into_par_iter().map(|i| (i as i32, true)).collect();
 
-    // pretend to broadcast from leader - cluster_info::create_broadcast_orders
-    let mut broadcast_table = cluster_info.sorted_tvu_peers(Some(&staked_nodes));
+    // pretend to broadcast from leader - node_group_info::create_broadcast_orders
+    let mut broadcast_table = node_group_info.sorted_tvu_peers(Some(&staked_nodes));
     broadcast_table.truncate(fanout);
-    let orders = ClusterInfo::create_broadcast_orders(false, &blobs, &broadcast_table);
+    let orders = NodeGroupInfo::create_broadcast_orders(false, &blobs, &broadcast_table);
 
     // send blobs to layer 1 nodes
     orders.iter().for_each(|(b, vc)| {
@@ -87,7 +87,7 @@ fn run_simulation(stakes: &[u64], fanout: usize) {
     // start avalanche simulation
     let now = Instant::now();
     batches.par_iter_mut().for_each(|batch| {
-        let mut cluster = c_info.clone();
+        let mut node_group = c_info.clone();
         let batch_size = batch.len();
         let mut remaining = batch_size;
         let senders: HashMap<_, _> = senders.lock().unwrap().clone();
@@ -103,11 +103,11 @@ fn run_simulation(stakes: &[u64], fanout: usize) {
                     "Timed out with {:?} remaining nodes",
                     remaining
                 );
-                cluster.gossip.set_self(&*id);
+                node_group.gossip.set_self(&*id);
                 if !mapped_peers.contains_key(id) {
                     let (neighbors, children) = compute_retransmit_peers(
                         Some(&staked_nodes),
-                        &Arc::new(RwLock::new(cluster.clone())),
+                        &Arc::new(RwLock::new(node_group.clone())),
                         fanout,
                     );
                     let vec_children: Vec<_> = children

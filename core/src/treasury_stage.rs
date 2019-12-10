@@ -2,7 +2,7 @@
 //! to contruct a software pipeline. The stage uses all available CPU cores and
 //! can do its processing in parallel with signature verification on the GPU.
 use crate::block_buffer_pool::BlockBufferPool;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::entry_info;
 use crate::entry_info::{hash_transactions, Entry};
 use crate::leader_arrange_cache::LeaderScheduleCache;
@@ -58,13 +58,13 @@ impl BankingStage {
     /// Create the stage using `bank`. Exit when `verified_receiver` is dropped.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         verified_receiver: Receiver<VerifiedPackets>,
         verified_vote_receiver: Receiver<VerifiedPackets>,
     ) -> Self {
         Self::new_num_threads(
-            cluster_info,
+            node_group_info,
             waterclock_recorder,
             verified_receiver,
             verified_vote_receiver,
@@ -74,7 +74,7 @@ impl BankingStage {
     }
 
     fn new_num_threads(
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         verified_receiver: Receiver<VerifiedPackets>,
         verified_vote_receiver: Receiver<VerifiedPackets>,
@@ -99,7 +99,7 @@ impl BankingStage {
                 };
 
                 let waterclock_recorder = waterclock_recorder.clone();
-                let cluster_info = cluster_info.clone();
+                let node_group_info = node_group_info.clone();
                 let exit = exit.clone();
                 let mut recv_start = Instant::now();
                 Builder::new()
@@ -108,7 +108,7 @@ impl BankingStage {
                         Self::process_loop(
                             &verified_receiver,
                             &waterclock_recorder,
-                            &cluster_info,
+                            &node_group_info,
                             &mut recv_start,
                             enable_forwarding,
                             i,
@@ -245,11 +245,11 @@ impl BankingStage {
     fn process_buffered_packets(
         socket: &std::net::UdpSocket,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         buffered_packets: &mut Vec<PacketsAndOffsets>,
         enable_forwarding: bool,
     ) -> Result<()> {
-        let rcluster_info = cluster_info.read().unwrap();
+        let r_node_group_info = node_group_info.read().unwrap();
 
         let (decision, next_leader) = {
             let waterclock = waterclock_recorder.lock().unwrap();
@@ -259,7 +259,7 @@ impl BankingStage {
                     next_leader,
                     waterclock.bank().is_some(),
                     waterclock.would_be_leader(DEFAULT_TICKS_PER_SLOT * 2),
-                    &rcluster_info.id(),
+                    &r_node_group_info.id(),
                 ),
                 next_leader,
             )
@@ -268,7 +268,7 @@ impl BankingStage {
         match decision {
             BufferedPacketsDecision::Consume => {
                 let mut unprocessed = Self::consume_buffered_packets(
-                    &rcluster_info.id(),
+                    &r_node_group_info.id(),
                     waterclock_recorder,
                     buffered_packets,
                 )?;
@@ -278,7 +278,7 @@ impl BankingStage {
             BufferedPacketsDecision::Forward => {
                 if enable_forwarding {
                     next_leader.map_or(Ok(()), |leader_pubkey| {
-                        rcluster_info
+                        r_node_group_info
                             .lookup(&leader_pubkey)
                             .map_or(Ok(()), |leader| {
                                 let _ = Self::forward_buffered_packets(
@@ -302,7 +302,7 @@ impl BankingStage {
     pub fn process_loop(
         verified_receiver: &Arc<Mutex<Receiver<VerifiedPackets>>>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         recv_start: &mut Instant,
         enable_forwarding: bool,
         id: u32,
@@ -314,7 +314,7 @@ impl BankingStage {
                 Self::process_buffered_packets(
                     &socket,
                     waterclock_recorder,
-                    cluster_info,
+                    node_group_info,
                     &mut buffered_packets,
                     enable_forwarding,
                 )
@@ -336,7 +336,7 @@ impl BankingStage {
                 &waterclock_recorder,
                 recv_start,
                 recv_timeout,
-                cluster_info,
+                node_group_info,
                 id,
             ) {
                 Err(Error::RecvTimeoutError(RecvTimeoutError::Timeout)) => (),
@@ -716,7 +716,7 @@ impl BankingStage {
         waterclock: &Arc<Mutex<WaterClockRecorder>>,
         recv_start: &mut Instant,
         recv_timeout: Duration,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         id: u32,
     ) -> Result<UnprocessedPackets> {
         let mms = verified_receiver
@@ -758,7 +758,7 @@ impl BankingStage {
 
             if processed < verified_txs_len {
                 let next_leader = waterclock.lock().unwrap().next_slot_leader();
-                let my_pubkey = cluster_info.read().unwrap().id();
+                let my_pubkey = node_group_info.read().unwrap().id();
                 // Walk thru rest of the transactions and filter out the invalid (e.g. too old) ones
                 while let Some((msgs, vers)) = mms_iter.next() {
                     let packet_indexes = Self::generate_packet_indexes(vers);
@@ -822,7 +822,7 @@ impl Service for BankingStage {
 
 pub fn create_test_recorder(
     bank: &Arc<Bank>,
-    blocktree: &Arc<BlockBufferPool>,
+    block_buffer_pool: &Arc<BlockBufferPool>,
 ) -> (
     Arc<AtomicBool>,
     Arc<Mutex<WaterClockRecorder>>,
@@ -838,7 +838,7 @@ pub fn create_test_recorder(
         Some(4),
         bank.ticks_per_slot(),
         &Pubkey::default(),
-        blocktree,
+        block_buffer_pool,
         &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
         &waterclock_config,
     );
@@ -854,7 +854,7 @@ pub fn create_test_recorder(
 mod tests {
     use super::*;
     use crate::block_buffer_pool::get_tmp_ledger_path;
-    use crate::cluster_message::Node;
+    use crate::node_group_info::Node;
     use crate::entry_info::EntrySlice;
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
     use crate::packet::to_packets;
@@ -876,15 +876,15 @@ mod tests {
         let (vote_sender, vote_receiver) = channel();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(
+            let block_buffer_pool = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, waterclock_recorder, waterclock_service, _entry_receiever) =
-                create_test_recorder(&bank, &blocktree);
-            let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-            let cluster_info = Arc::new(RwLock::new(cluster_info));
+                create_test_recorder(&bank, &block_buffer_pool);
+            let node_group_info = NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+            let node_group_info = Arc::new(RwLock::new(node_group_info));
             let banking_stage = BankingStage::new(
-                &cluster_info,
+                &node_group_info,
                 &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
@@ -895,7 +895,7 @@ mod tests {
             banking_stage.join().unwrap();
             waterclock_service.join().unwrap();
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -911,15 +911,15 @@ mod tests {
         let (vote_sender, vote_receiver) = channel();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(
+            let block_buffer_pool = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
-                create_test_recorder(&bank, &blocktree);
-            let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-            let cluster_info = Arc::new(RwLock::new(cluster_info));
+                create_test_recorder(&bank, &block_buffer_pool);
+            let node_group_info = NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+            let node_group_info = Arc::new(RwLock::new(node_group_info));
             let banking_stage = BankingStage::new(
-                &cluster_info,
+                &node_group_info,
                 &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
@@ -943,7 +943,7 @@ mod tests {
             assert_eq!(entries[entries.len() - 1].hash, bank.last_blockhash());
             banking_stage.join().unwrap();
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -960,15 +960,15 @@ mod tests {
         let (vote_sender, vote_receiver) = channel();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(
+            let block_buffer_pool = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
             let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
-                create_test_recorder(&bank, &blocktree);
-            let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-            let cluster_info = Arc::new(RwLock::new(cluster_info));
+                create_test_recorder(&bank, &block_buffer_pool);
+            let node_group_info = NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+            let node_group_info = Arc::new(RwLock::new(node_group_info));
             let banking_stage = BankingStage::new(
-                &cluster_info,
+                &node_group_info,
                 &waterclock_recorder,
                 verified_receiver,
                 vote_receiver,
@@ -1051,7 +1051,7 @@ mod tests {
             drop(entry_receiver);
             banking_stage.join().unwrap();
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1103,17 +1103,17 @@ mod tests {
             let entry_receiver = {
                 // start a banking_stage to eat verified receiver
                 let bank = Arc::new(Bank::new(&genesis_block));
-                let blocktree = Arc::new(
+                let block_buffer_pool = Arc::new(
                     BlockBufferPool::open_ledger_file(&ledger_path)
                         .expect("Expected to be able to open database ledger"),
                 );
                 let (exit, waterclock_recorder, waterclock_service, entry_receiver) =
-                    create_test_recorder(&bank, &blocktree);
-                let cluster_info =
-                    ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-                let cluster_info = Arc::new(RwLock::new(cluster_info));
+                    create_test_recorder(&bank, &block_buffer_pool);
+                let node_group_info =
+                    NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+                let node_group_info = Arc::new(RwLock::new(node_group_info));
                 let _banking_stage = BankingStage::new_num_threads(
-                    &cluster_info,
+                    &node_group_info,
                     &waterclock_recorder,
                     verified_receiver,
                     vote_receiver,
@@ -1150,7 +1150,7 @@ mod tests {
             // the account balance below zero before the credit is added.
             assert_eq!(bank.get_balance(&alice.pubkey()), 1);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1168,7 +1168,7 @@ mod tests {
         };
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
@@ -1177,7 +1177,7 @@ mod tests {
                 None,
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1234,7 +1234,7 @@ mod tests {
             let (_, entries) = entry_receiver.recv().unwrap();
             assert_eq!(entries[0].0.transactions.len(), transactions.len() - 1);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1484,7 +1484,7 @@ mod tests {
         };
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
@@ -1493,7 +1493,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &pubkey,
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1545,7 +1545,7 @@ mod tests {
 
             assert_eq!(bank.get_balance(&pubkey), 1);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -1572,7 +1572,7 @@ mod tests {
         };
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 bank.tick_height(),
@@ -1581,7 +1581,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &pubkey,
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1599,7 +1599,7 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(unprocessed.len(), 1);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]

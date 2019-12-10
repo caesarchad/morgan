@@ -4,7 +4,7 @@
 use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::BlockBufferPool;
 use crate::block_buffer_pool_processor;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::entry_info::{Entry, EntrySlice};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::leader_arrange_utils;
@@ -78,9 +78,9 @@ impl ReplayStage {
         my_pubkey: &Pubkey,
         vote_account: &Pubkey,
         voting_keypair: Option<&Arc<T>>,
-        blocktree: Arc<BlockBufferPool>,
+        block_buffer_pool: Arc<BlockBufferPool>,
         bank_forks: &Arc<RwLock<BankForks>>,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
         exit: &Arc<AtomicBool>,
         ledger_signal_receiver: Receiver<bool>,
         subscriptions: &Arc<RpcSubscriptions>,
@@ -117,7 +117,7 @@ impl ReplayStage {
                     }
 
                     Self::generate_new_bank_forks(
-                        &blocktree,
+                        &block_buffer_pool,
                         &mut bank_forks.write().unwrap(),
                         &leader_schedule_cache,
                     );
@@ -125,7 +125,7 @@ impl ReplayStage {
                     let mut is_tpu_bank_active = waterclock_recorder.lock().unwrap().bank().is_some();
 
                     Self::replay_active_banks(
-                        &blocktree,
+                        &block_buffer_pool,
                         &bank_forks,
                         &my_pubkey,
                         &mut ticks_per_slot,
@@ -152,15 +152,15 @@ impl ReplayStage {
                             &mut progress,
                             &vote_account,
                             &voting_keypair,
-                            &cluster_info,
-                            &blocktree,
+                            &node_group_info,
+                            &block_buffer_pool,
                             &leader_schedule_cache,
                             &root_slot_sender,
                         )?;
 
                         Self::reset_waterclock_recorder(
                             &my_pubkey,
-                            &blocktree,
+                            &block_buffer_pool,
                             &bank,
                             &waterclock_recorder,
                             ticks_per_slot,
@@ -188,7 +188,7 @@ impl ReplayStage {
                             &my_pubkey,
                             &bank_forks,
                             &waterclock_recorder,
-                            &cluster_info,
+                            &node_group_info,
                             waterclock_slot,
                             reached_leader_tick,
                             grace_ticks,
@@ -205,7 +205,7 @@ impl ReplayStage {
                     match result {
                         Err(RecvTimeoutError::Timeout) => continue,
                         Err(_) => break,
-                        Ok(_) => trace!("blocktree signal"),
+                        Ok(_) => trace!("block_buffer_pool signal"),
                     };
                 }
                 Ok(())
@@ -217,7 +217,7 @@ impl ReplayStage {
         my_pubkey: &Pubkey,
         bank_forks: &Arc<RwLock<BankForks>>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         waterclock_slot: u64,
         reached_leader_tick: bool,
         grace_ticks: u64,
@@ -240,7 +240,7 @@ impl ReplayStage {
                         "me: {} leader {} at waterclock slot {}",
                         my_pubkey, next_leader, waterclock_slot
                     );
-                    cluster_info.write().unwrap().set_leader(&next_leader);
+                    node_group_info.write().unwrap().set_leader(&next_leader);
                     if next_leader == *my_pubkey && reached_leader_tick {
                         debug!("{} starting tpu for slot {}", my_pubkey, waterclock_slot);
                         datapoint_warn!(
@@ -277,12 +277,12 @@ impl ReplayStage {
                 });
         }
     }
-    fn replay_blocktree_into_bank(
+    fn replay_block_buffer_into_bank(
         bank: &Bank,
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         progress: &mut HashMap<u64, ForkProgress>,
     ) -> Result<()> {
-        let (entries, num) = Self::load_blocktree_entries(bank, blocktree, progress)?;
+        let (entries, num) = Self::load_block_buffer_entries(bank, block_buffer_pool, progress)?;
         let len = entries.len();
         let result = Self::replay_entries_into_bank(bank, entries, progress, num);
         if result.is_ok() {
@@ -310,8 +310,8 @@ impl ReplayStage {
         progress: &mut HashMap<u64, ForkProgress>,
         vote_account: &Pubkey,
         voting_keypair: &Option<Arc<T>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
-        blocktree: &Arc<BlockBufferPool>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         root_slot_sender: &Sender<Vec<u64>>,
     ) -> Result<()>
@@ -333,7 +333,7 @@ impl ReplayStage {
                 .collect::<Vec<_>>();
             rooted_slots.push(root_bank.slot());
             let old_root = bank_forks.read().unwrap().root();
-            blocktree
+            block_buffer_pool
                 .config_base(new_root, old_root)
                 .expect("Ledger set root failed");
             // Set root first in leader schedule_cache before bank_forks because bank_forks.root
@@ -346,7 +346,7 @@ impl ReplayStage {
         }
         locktower.update_epoch(&bank);
         if let Some(ref voting_keypair) = voting_keypair {
-            let node_keypair = cluster_info.read().unwrap().keypair.clone();
+            let node_keypair = node_group_info.read().unwrap().keypair.clone();
 
             // Send our last few votes along with the new one
             let vote_ix = vote_instruction::vote(
@@ -360,21 +360,21 @@ impl ReplayStage {
             let blockhash = bank.last_blockhash();
             vote_tx.partial_sign(&[node_keypair.as_ref()], blockhash);
             vote_tx.partial_sign(&[voting_keypair.as_ref()], blockhash);
-            cluster_info.write().unwrap().push_vote(vote_tx);
+            node_group_info.write().unwrap().push_vote(vote_tx);
         }
         Ok(())
     }
 
     fn reset_waterclock_recorder(
         my_pubkey: &Pubkey,
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         bank: &Arc<Bank>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         ticks_per_slot: u64,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) {
         let next_leader_slot =
-            leader_schedule_cache.next_leader_slot(&my_pubkey, bank.slot(), &bank, Some(blocktree));
+            leader_schedule_cache.next_leader_slot(&my_pubkey, bank.slot(), &bank, Some(block_buffer_pool));
         waterclock_recorder.lock().unwrap().reset(
             bank.tick_height(),
             bank.last_blockhash(),
@@ -391,7 +391,7 @@ impl ReplayStage {
     }
 
     fn replay_active_banks(
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         bank_forks: &Arc<RwLock<BankForks>>,
         my_pubkey: &Pubkey,
         ticks_per_slot: &mut u64,
@@ -405,7 +405,7 @@ impl ReplayStage {
             let bank = bank_forks.read().unwrap().get(*bank_slot).unwrap().clone();
             *ticks_per_slot = bank.ticks_per_slot();
             if bank.collector_id() != *my_pubkey {
-                Self::replay_blocktree_into_bank(&bank, &blocktree, progress)?;
+                Self::replay_block_buffer_into_bank(&bank, &block_buffer_pool, progress)?;
             }
             let max_tick_height = (*bank_slot + 1) * bank.ticks_per_slot() - 1;
             if bank.tick_height() == max_tick_height {
@@ -545,16 +545,16 @@ impl ReplayStage {
         });
     }
 
-    fn load_blocktree_entries(
+    fn load_block_buffer_entries(
         bank: &Bank,
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         progress: &mut HashMap<u64, ForkProgress>,
     ) -> Result<(Vec<Entry>, usize)> {
         let bank_slot = bank.slot();
         let bank_progress = &mut progress
             .entry(bank_slot)
             .or_insert(ForkProgress::new(bank.last_blockhash()));
-        blocktree.fetch_slit_items_via_obj_amount(bank_slot, bank_progress.num_blobs as u64, None)
+        block_buffer_pool.fetch_slit_items_via_obj_amount(bank_slot, bank_progress.num_blobs as u64, None)
     }
 
     fn replay_entries_into_bank(
@@ -621,7 +621,7 @@ impl ReplayStage {
     }
 
     fn generate_new_bank_forks(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         forks: &mut BankForks,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
     ) {
@@ -629,7 +629,7 @@ impl ReplayStage {
         let frozen_banks = forks.frozen_banks();
         let frozen_bank_slots: Vec<u64> = frozen_banks.keys().cloned().collect();
         trace!("frozen_banks {:?}", frozen_bank_slots);
-        let next_slots = blocktree
+        let next_slots = block_buffer_pool
             .fetch_slits_from(&frozen_bank_slots)
             .expect("Db error");
         // Filter out what we've already seen
@@ -683,7 +683,7 @@ mod test {
     fn test_child_slots_of_same_parent() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(
+            let block_buffer_pool = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
 
@@ -697,10 +697,10 @@ mod test {
             let mut blob_slot_1 = Blob::default();
             blob_slot_1.set_slot(1);
             blob_slot_1.set_parent(0);
-            blocktree.punctuate_info_objs(&vec![blob_slot_1]).unwrap();
+            block_buffer_pool.punctuate_info_objs(&vec![blob_slot_1]).unwrap();
             assert!(bank_forks.get(1).is_none());
             ReplayStage::generate_new_bank_forks(
-                &blocktree,
+                &block_buffer_pool,
                 &mut bank_forks,
                 &leader_schedule_cache,
             );
@@ -710,10 +710,10 @@ mod test {
             let mut blob_slot_2 = Blob::default();
             blob_slot_2.set_slot(2);
             blob_slot_2.set_parent(0);
-            blocktree.punctuate_info_objs(&vec![blob_slot_2]).unwrap();
+            block_buffer_pool.punctuate_info_objs(&vec![blob_slot_2]).unwrap();
             assert!(bank_forks.get(2).is_none());
             ReplayStage::generate_new_bank_forks(
-                &blocktree,
+                &block_buffer_pool,
                 &mut bank_forks,
                 &leader_schedule_cache,
             );

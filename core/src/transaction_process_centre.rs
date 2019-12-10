@@ -4,8 +4,8 @@
 use crate::treasury_stage::BankingStage;
 use crate::block_buffer_pool::BlockBufferPool;
 use crate::propagate_stage::BroadcastStage;
-use crate::cluster_message::ClusterInfo;
-use crate::cluster_vote_message_listener::ClusterInfoVoteListener;
+use crate::node_group_info::NodeGroupInfo;
+use crate::node_group_info_voter_listener::ClusterInfoVoteListener;
 use crate::fetch_stage::FetchStage;
 use crate::water_clock_recorder::{WaterClockRecorder, WorkingBankEntries};
 use crate::service::Service;
@@ -30,18 +30,18 @@ impl Tpu {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: &Pubkey,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         waterclock_recorder: &Arc<Mutex<WaterClockRecorder>>,
         entry_receiver: Receiver<WorkingBankEntries>,
         transactions_sockets: Vec<UdpSocket>,
         tpu_via_blobs_sockets: Vec<UdpSocket>,
         broadcast_socket: UdpSocket,
         sigverify_disabled: bool,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         genesis_blockhash: &Hash,
     ) -> Self {
-        cluster_info.write().unwrap().set_leader(id);
+        node_group_info.write().unwrap().set_leader(id);
 
         let (packet_sender, packet_receiver) = channel();
         let fetch_stage = FetchStage::new_with_sender(
@@ -59,14 +59,14 @@ impl Tpu {
         let (verified_vote_sender, verified_vote_receiver) = channel();
         let cluster_info_vote_listener = ClusterInfoVoteListener::new(
             &exit,
-            cluster_info.clone(),
+            node_group_info.clone(),
             sigverify_disabled,
             verified_vote_sender,
             &waterclock_recorder,
         );
 
         let banking_stage = BankingStage::new(
-            &cluster_info,
+            &node_group_info,
             waterclock_recorder,
             verified_receiver,
             verified_vote_receiver,
@@ -74,10 +74,10 @@ impl Tpu {
 
         let broadcast_stage = BroadcastStage::new(
             broadcast_socket,
-            cluster_info.clone(),
+            node_group_info.clone(),
             entry_receiver,
             &exit,
-            blocktree,
+            block_buffer_pool,
             genesis_blockhash,
         );
 

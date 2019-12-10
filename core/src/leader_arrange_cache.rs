@@ -53,7 +53,7 @@ impl LeaderScheduleCache {
         pubkey: &Pubkey,
         mut current_slot: u64,
         bank: &Bank,
-        blocktree: Option<&BlockBufferPool>,
+        block_buffer_pool: Option<&BlockBufferPool>,
     ) -> Option<u64> {
         let (mut epoch, mut start_index) = bank.get_epoch_and_slot_index(current_slot + 1);
         while let Some(leader_schedule) = self.get_epoch_schedule_else_compute(epoch, bank) {
@@ -69,8 +69,8 @@ impl LeaderScheduleCache {
             for i in start_index..bank.get_slots_in_epoch(epoch) {
                 current_slot += 1;
                 if *pubkey == leader_schedule[i] {
-                    if let Some(blocktree) = blocktree {
-                        if let Some(meta) = blocktree.meta_info(current_slot).unwrap() {
+                    if let Some(block_buffer_pool) = block_buffer_pool {
+                        if let Some(meta) = block_buffer_pool.meta_info(current_slot).unwrap() {
                             // We have already sent a blob for this slot, so skip it
                             if meta.received > 0 {
                                 continue;
@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_next_leader_slot_blocktree() {
+    fn test_next_leader_slot_block_buffer() {
         let pubkey = Pubkey::new_rand();
         let mut genesis_block = create_genesis_block_with_leader(
             BOOTSTRAP_LEADER_DIFS,
@@ -315,7 +315,7 @@ mod tests {
         let cache = Arc::new(LeaderScheduleCache::new_from_bank(&bank));
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree = Arc::new(
+            let block_buffer_pool = Arc::new(
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
             );
 
@@ -325,16 +325,16 @@ mod tests {
             );
             // Check that the next leader slot after 0 is slot 1
             assert_eq!(
-                cache.next_leader_slot(&pubkey, 0, &bank, Some(&blocktree)),
+                cache.next_leader_slot(&pubkey, 0, &bank, Some(&block_buffer_pool)),
                 Some(1)
             );
 
             // Write a blob into slot 2 that chains to slot 1,
             // but slot 1 is empty so should not be skipped
             let (blobs, _) = make_slot_entries(2, 1, 1);
-            blocktree.record_objs(&blobs[..]).unwrap();
+            block_buffer_pool.record_objs(&blobs[..]).unwrap();
             assert_eq!(
-                cache.next_leader_slot(&pubkey, 0, &bank, Some(&blocktree)),
+                cache.next_leader_slot(&pubkey, 0, &bank, Some(&block_buffer_pool)),
                 Some(1)
             );
 
@@ -342,9 +342,9 @@ mod tests {
             let (blobs, _) = make_slot_entries(1, 0, 1);
 
             // Check that slot 1 and 2 are skipped
-            blocktree.record_objs(&blobs[..]).unwrap();
+            block_buffer_pool.record_objs(&blobs[..]).unwrap();
             assert_eq!(
-                cache.next_leader_slot(&pubkey, 0, &bank, Some(&blocktree)),
+                cache.next_leader_slot(&pubkey, 0, &bank, Some(&block_buffer_pool)),
                 Some(3)
             );
 
@@ -354,7 +354,7 @@ mod tests {
                     &pubkey,
                     2 * genesis_block.slots_per_epoch - 1, // no schedule generated for epoch 2
                     &bank,
-                    Some(&blocktree)
+                    Some(&block_buffer_pool)
                 ),
                 None
             );
@@ -364,12 +364,12 @@ mod tests {
                     &Pubkey::new_rand(), // not in leader_schedule
                     0,
                     &bank,
-                    Some(&blocktree)
+                    Some(&block_buffer_pool)
                 ),
                 None
             );
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]

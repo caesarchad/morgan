@@ -4,8 +4,8 @@
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver, SlotMeta};
-use crate::cluster_message::ClusterInfo;
-use crate::cluster_fix_message_listener::ClusterInfoRepairListener;
+use crate::node_group_info::NodeGroupInfo;
+use crate::node_group_info_fixer_listener::NodeGroupInfoFixListener;
 use crate::result::Result;
 use crate::service::Service;
 use morgan_metricbot::datapoint_info;
@@ -59,24 +59,24 @@ impl Default for RepairSlotRange {
 
 pub struct RepairService {
     t_repair: JoinHandle<()>,
-    cluster_info_repair_listener: Option<ClusterInfoRepairListener>,
+    node_group_info_fix_listener: Option<NodeGroupInfoFixListener>,
 }
 
 impl RepairService {
     pub fn new(
-        blocktree: Arc<BlockBufferPool>,
+        block_buffer_pool: Arc<BlockBufferPool>,
         exit: Arc<AtomicBool>,
         repair_socket: Arc<UdpSocket>,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
         repair_strategy: RepairStrategy,
     ) -> Self {
-        let cluster_info_repair_listener = match repair_strategy {
+        let node_group_info_fix_listener = match repair_strategy {
             RepairStrategy::RepairAll {
                 ref epoch_schedule, ..
-            } => Some(ClusterInfoRepairListener::new(
-                &blocktree,
+            } => Some(NodeGroupInfoFixListener::new(
+                &block_buffer_pool,
                 &exit,
-                cluster_info.clone(),
+                node_group_info.clone(),
                 *epoch_schedule,
             )),
 
@@ -87,10 +87,10 @@ impl RepairService {
             .name("morgan-repair-service".to_string())
             .spawn(move || {
                 Self::run(
-                    &blocktree,
+                    &block_buffer_pool,
                     &exit,
                     &repair_socket,
-                    &cluster_info,
+                    &node_group_info,
                     repair_strategy,
                 )
             })
@@ -98,19 +98,19 @@ impl RepairService {
 
         RepairService {
             t_repair,
-            cluster_info_repair_listener,
+            node_group_info_fix_listener,
         }
     }
 
     fn run(
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         exit: &Arc<AtomicBool>,
         repair_socket: &Arc<UdpSocket>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         repair_strategy: RepairStrategy,
     ) {
         let mut epoch_slots: BTreeSet<u64> = BTreeSet::new();
-        let id = cluster_info.read().unwrap().id();
+        let id = node_group_info.read().unwrap().id();
         let mut current_root = 0;
         if let RepairStrategy::RepairAll {
             ref bank_forks,
@@ -121,11 +121,11 @@ impl RepairService {
             current_root = bank_forks.read().unwrap().root();
             Self::initialize_epoch_slots(
                 id,
-                blocktree,
+                block_buffer_pool,
                 &mut epoch_slots,
                 current_root,
                 epoch_schedule,
-                cluster_info,
+                node_group_info,
             );
         }
         loop {
@@ -137,7 +137,7 @@ impl RepairService {
                 match repair_strategy {
                     RepairStrategy::RepairRange(ref repair_slot_range) => {
                         Self::generate_repairs_in_range(
-                            blocktree,
+                            block_buffer_pool,
                             MAX_REPAIR_LENGTH,
                             repair_slot_range,
                         )
@@ -154,10 +154,10 @@ impl RepairService {
                             new_root,
                             &mut current_root,
                             &mut epoch_slots,
-                            &cluster_info,
+                            &node_group_info,
                             completed_slots_receiver,
                         );
-                        Self::generate_repairs(blocktree, new_root, MAX_REPAIR_LENGTH)
+                        Self::generate_repairs(block_buffer_pool, new_root, MAX_REPAIR_LENGTH)
                     }
                 }
             };
@@ -166,7 +166,7 @@ impl RepairService {
                 let reqs: Vec<_> = repairs
                     .into_iter()
                     .filter_map(|repair_request| {
-                        cluster_info
+                        node_group_info
                             .read()
                             .unwrap()
                             .repair_request(&repair_request)
@@ -203,7 +203,7 @@ impl RepairService {
 
     // Generate repairs for all slots `x` in the repair_range.start <= x <= repair_range.end
     fn generate_repairs_in_range(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         max_repairs: usize,
         repair_range: &RepairSlotRange,
     ) -> Result<(Vec<RepairType>)> {
@@ -214,7 +214,7 @@ impl RepairService {
                 break;
             }
 
-            let meta = blocktree
+            let meta = block_buffer_pool
                 .meta_info(slot)
                 .expect("Unable to lookup slot meta")
                 .unwrap_or(SlotMeta {
@@ -223,7 +223,7 @@ impl RepairService {
                 });
 
             let new_repairs = Self::generate_repairs_for_slot(
-                blocktree,
+                block_buffer_pool,
                 slot,
                 &meta,
                 max_repairs - repairs.len(),
@@ -235,25 +235,25 @@ impl RepairService {
     }
 
     fn generate_repairs(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         root: u64,
         max_repairs: usize,
     ) -> Result<(Vec<RepairType>)> {
         // Slot height and blob indexes for blobs we want to repair
         let mut repairs: Vec<RepairType> = vec![];
-        Self::generate_repairs_for_fork(blocktree, &mut repairs, max_repairs, root);
+        Self::generate_repairs_for_fork(block_buffer_pool, &mut repairs, max_repairs, root);
 
         // TODO: Incorporate gossip to determine priorities for repair?
 
-        // Try to resolve orphans in blocktree
-        let orphans = blocktree.fetch_tramps(Some(MAX_ORPHANS));
+        // Try to resolve orphans in block_buffer_pool
+        let orphans = block_buffer_pool.fetch_tramps(Some(MAX_ORPHANS));
 
         Self::generate_repairs_for_orphans(&orphans[..], &mut repairs);
         Ok(repairs)
     }
 
     fn generate_repairs_for_slot(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         slot: u64,
         slot_meta: &SlotMeta,
         max_repairs: usize,
@@ -263,7 +263,7 @@ impl RepairService {
         } else if slot_meta.consumed == slot_meta.received {
             vec![RepairType::HighestBlob(slot, slot_meta.received)]
         } else {
-            let reqs = blocktree.search_absent_info_indices(
+            let reqs = block_buffer_pool.search_absent_info_indices(
                 slot,
                 slot_meta.consumed,
                 slot_meta.received,
@@ -282,7 +282,7 @@ impl RepairService {
 
     /// Repairs any fork starting at the input slot
     fn generate_repairs_for_fork(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         repairs: &mut Vec<RepairType>,
         max_repairs: usize,
         slot: u64,
@@ -290,9 +290,9 @@ impl RepairService {
         let mut pending_slots = vec![slot];
         while repairs.len() < max_repairs && !pending_slots.is_empty() {
             let slot = pending_slots.pop().unwrap();
-            if let Some(slot_meta) = blocktree.meta_info(slot).unwrap() {
+            if let Some(slot_meta) = block_buffer_pool.meta_info(slot).unwrap() {
                 let new_repairs = Self::generate_repairs_for_slot(
-                    blocktree,
+                    block_buffer_pool,
                     slot,
                     &slot_meta,
                     max_repairs - repairs.len(),
@@ -307,7 +307,7 @@ impl RepairService {
     }
 
     fn get_completed_slots_past_root(
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         slots_in_gossip: &mut BTreeSet<u64>,
         root: u64,
         epoch_schedule: &EpochSchedule,
@@ -315,7 +315,7 @@ impl RepairService {
         let last_confirmed_epoch = epoch_schedule.get_stakers_epoch(root);
         let last_epoch_slot = epoch_schedule.get_last_slot_in_epoch(last_confirmed_epoch);
 
-        let meta_iter = blocktree
+        let meta_iter = block_buffer_pool
             .slit_meta_repeater(root + 1)
             .expect("Couldn't get db iterator");
 
@@ -331,19 +331,19 @@ impl RepairService {
 
     fn initialize_epoch_slots(
         id: Pubkey,
-        blocktree: &BlockBufferPool,
+        block_buffer_pool: &BlockBufferPool,
         slots_in_gossip: &mut BTreeSet<u64>,
         root: u64,
         epoch_schedule: &EpochSchedule,
-        cluster_info: &RwLock<ClusterInfo>,
+        node_group_info: &RwLock<NodeGroupInfo>,
     ) {
-        Self::get_completed_slots_past_root(blocktree, slots_in_gossip, root, epoch_schedule);
+        Self::get_completed_slots_past_root(block_buffer_pool, slots_in_gossip, root, epoch_schedule);
 
         // Safe to set into gossip because by this time, the leader schedule cache should
-        // also be updated with the latest root (done in blocktree_processor) and thus
+        // also be updated with the latest root (done in block_buffer_processor) and thus
         // will provide a schedule to window_service for any incoming blobs up to the
         // last_confirmed_epoch.
-        cluster_info
+        node_group_info
             .write()
             .unwrap()
             .push_epoch_slots(id, root, slots_in_gossip.clone());
@@ -356,7 +356,7 @@ impl RepairService {
         latest_known_root: u64,
         prev_root: &mut u64,
         slots_in_gossip: &mut BTreeSet<u64>,
-        cluster_info: &RwLock<ClusterInfo>,
+        node_group_info: &RwLock<NodeGroupInfo>,
         completed_slots_receiver: &CompletedSlotsReceiver,
     ) {
         // If the latest known root is different, update gossip.
@@ -378,7 +378,7 @@ impl RepairService {
                 Self::retain_slots_greater_than_root(slots_in_gossip, latest_known_root);
             }
 
-            cluster_info.write().unwrap().push_epoch_slots(
+            node_group_info.write().unwrap().push_epoch_slots(
                 id,
                 latest_known_root,
                 slots_in_gossip.clone(),
@@ -399,8 +399,8 @@ impl Service for RepairService {
 
     fn join(self) -> thread::Result<()> {
         let mut results = vec![self.t_repair.join()];
-        if let Some(cluster_info_repair_listener) = self.cluster_info_repair_listener {
-            results.push(cluster_info_repair_listener.join());
+        if let Some(node_group_info_fix_listener) = self.node_group_info_fix_listener {
+            results.push(node_group_info_fix_listener.join());
         }
         for r in results {
             r?;
@@ -416,7 +416,7 @@ mod test {
         make_chaining_slot_entries, make_many_slot_entries, make_slot_entries,
     };
     use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
-    use crate::cluster_message::Node;
+    use crate::node_group_info::Node;
     use rand::seq::SliceRandom;
     use rand::{thread_rng, Rng};
     use std::cmp::min;
@@ -425,17 +425,17 @@ mod test {
 
     #[test]
     pub fn test_repair_orphan() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             // Create some orphan slots
             let (mut blobs, _) = make_slot_entries(1, 0, 1);
             let (blobs2, _) = make_slot_entries(5, 2, 1);
             blobs.extend(blobs2);
-            blocktree.record_objs(&blobs).unwrap();
+            block_buffer_pool.record_objs(&blobs).unwrap();
             assert_eq!(
-                RepairService::generate_repairs(&blocktree, 0, 2).unwrap(),
+                RepairService::generate_repairs(&block_buffer_pool, 0, 2).unwrap(),
                 vec![
                     RepairType::HighestBlob(0, 0),
                     RepairType::Orphan(0),
@@ -444,35 +444,35 @@ mod test {
             );
         }
 
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_empty_slot() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             let (blobs, _) = make_slot_entries(2, 0, 1);
 
             // Write this blob to slot 2, should chain to slot 0, which we haven't received
             // any blobs for
-            blocktree.record_objs(&blobs).unwrap();
+            block_buffer_pool.record_objs(&blobs).unwrap();
 
             // Check that repair tries to patch the empty slot
             assert_eq!(
-                RepairService::generate_repairs(&blocktree, 0, 2).unwrap(),
+                RepairService::generate_repairs(&block_buffer_pool, 0, 2).unwrap(),
                 vec![RepairType::HighestBlob(0, 0), RepairType::Orphan(0)]
             );
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_generate_repairs() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             let nth = 3;
             let num_entries_per_slot = 5 * nth;
@@ -485,7 +485,7 @@ mod test {
             // write every nth blob
             let blobs_to_write: Vec<_> = blobs.iter().step_by(nth as usize).collect();
 
-            blocktree.record_objs(blobs_to_write).unwrap();
+            block_buffer_pool.record_objs(blobs_to_write).unwrap();
 
             let missing_indexes_per_slot: Vec<u64> = (0..num_entries_per_slot / nth - 1)
                 .flat_map(|x| ((nth * x + 1) as u64..(nth * x + nth) as u64))
@@ -500,23 +500,23 @@ mod test {
                 .collect();
 
             assert_eq!(
-                RepairService::generate_repairs(&blocktree, 0, std::usize::MAX).unwrap(),
+                RepairService::generate_repairs(&block_buffer_pool, 0, std::usize::MAX).unwrap(),
                 expected
             );
 
             assert_eq!(
-                RepairService::generate_repairs(&blocktree, 0, expected.len() - 2).unwrap()[..],
+                RepairService::generate_repairs(&block_buffer_pool, 0, expected.len() - 2).unwrap()[..],
                 expected[0..expected.len() - 2]
             );
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_generate_highest_repair() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -526,31 +526,31 @@ mod test {
             // Remove is_last flag on last blob
             blobs.last_mut().unwrap().set_flags(0);
 
-            blocktree.record_objs(&blobs).unwrap();
+            block_buffer_pool.record_objs(&blobs).unwrap();
 
             // We didn't get the last blob for this slot, so ask for the highest blob for that slot
             let expected: Vec<RepairType> = vec![RepairType::HighestBlob(0, num_entries_per_slot)];
 
             assert_eq!(
-                RepairService::generate_repairs(&blocktree, 0, std::usize::MAX).unwrap(),
+                RepairService::generate_repairs(&block_buffer_pool, 0, std::usize::MAX).unwrap(),
                 expected
             );
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_range() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             let slots: Vec<u64> = vec![1, 3, 5, 7, 8];
             let num_entries_per_slot = 10;
 
             let blobs = make_chaining_slot_entries(&slots, num_entries_per_slot);
             for (slot_blobs, _) in blobs.iter() {
-                blocktree.record_objs(&slot_blobs[1..]).unwrap();
+                block_buffer_pool.record_objs(&slot_blobs[1..]).unwrap();
             }
 
             // Iterate through all possible combinations of start..end (inclusive on both
@@ -573,7 +573,7 @@ mod test {
 
                     assert_eq!(
                         RepairService::generate_repairs_in_range(
-                            &blocktree,
+                            &block_buffer_pool,
                             std::usize::MAX,
                             &repair_slot_range
                         )
@@ -583,14 +583,14 @@ mod test {
                 }
             }
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_repair_range_highest() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
 
             let num_entries_per_slot = 10;
 
@@ -602,7 +602,7 @@ mod test {
                 let parent = if i > 0 { i - 1 } else { 0 };
                 let (blobs, _) = make_slot_entries(i, parent, num_entries_per_slot as u64);
 
-                blocktree.record_objs(&blobs).unwrap();
+                block_buffer_pool.record_objs(&blobs).unwrap();
             }
 
             let end = 4;
@@ -618,7 +618,7 @@ mod test {
 
             assert_eq!(
                 RepairService::generate_repairs_in_range(
-                    &blocktree,
+                    &block_buffer_pool,
                     std::usize::MAX,
                     &repair_slot_range
                 )
@@ -626,14 +626,14 @@ mod test {
                 expected
             );
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_get_completed_slots_past_root() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
+            let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
             let num_entries_per_slot = 10;
             let root = 10;
 
@@ -655,14 +655,14 @@ mod test {
                 .collect();
             let mut full_slots = BTreeSet::new();
 
-            blocktree.record_objs(&fork1_blobs).unwrap();
-            blocktree.record_objs(&fork2_incomplete_blobs).unwrap();
+            block_buffer_pool.record_objs(&fork1_blobs).unwrap();
+            block_buffer_pool.record_objs(&fork2_incomplete_blobs).unwrap();
 
             // Test that only slots > root from fork1 were included
             let epoch_schedule = EpochSchedule::new(32, 32, false);
 
             RepairService::get_completed_slots_past_root(
-                &blocktree,
+                &block_buffer_pool,
                 &mut full_slots,
                 root,
                 &epoch_schedule,
@@ -679,9 +679,9 @@ mod test {
                 .into_iter()
                 .flat_map(|(blobs, _)| blobs)
                 .collect();
-            blocktree.record_objs(&fork3_blobs).unwrap();
+            block_buffer_pool.record_objs(&fork3_blobs).unwrap();
             RepairService::get_completed_slots_past_root(
-                &blocktree,
+                &block_buffer_pool,
                 &mut full_slots,
                 root,
                 &epoch_schedule,
@@ -689,25 +689,25 @@ mod test {
             expected.insert(last_slot);
             assert_eq!(full_slots, expected);
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
     pub fn test_update_epoch_slots() {
-        let blocktree_path = get_tmp_ledger_path!();
+        let block_buffer_pool_path = get_tmp_ledger_path!();
         {
-            // Create blocktree
-            let (blocktree, _, completed_slots_receiver) =
-                BlockBufferPool::open_by_message(&blocktree_path).unwrap();
+            // Create block_buffer_pool
+            let (block_buffer_pool, _, completed_slots_receiver) =
+                BlockBufferPool::open_by_message(&block_buffer_pool_path).unwrap();
 
-            let blocktree = Arc::new(blocktree);
+            let block_buffer_pool = Arc::new(block_buffer_pool);
 
             let mut root = 0;
             let num_slots = 100;
             let entries_per_slot = 5;
-            let blocktree_ = blocktree.clone();
+            let block_buffer_pool_ = block_buffer_pool.clone();
 
-            // Spin up thread to write to blocktree
+            // Spin up thread to write to block_buffer_pool
             let writer = Builder::new()
                 .name("writer".to_string())
                 .spawn(move || {
@@ -723,7 +723,7 @@ mod test {
                     let mut rng = rand::thread_rng();
                     while i < blobs.len() as usize {
                         let step = rng.gen_range(1, max_step + 1);
-                        blocktree_
+                        block_buffer_pool_
                             .punctuate_info_objs(&blobs[i..min(i + max_step as usize, blobs.len())])
                             .unwrap();
                         sleep(Duration::from_millis(repair_interval_ms));
@@ -734,7 +734,7 @@ mod test {
 
             let mut completed_slots = BTreeSet::new();
             let node_info = Node::new_localhost_with_pubkey(&Pubkey::default());
-            let cluster_info = RwLock::new(ClusterInfo::new_with_invalid_keypair(
+            let node_group_info = RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
                 node_info.info.clone(),
             ));
 
@@ -744,7 +744,7 @@ mod test {
                     root,
                     &mut root.clone(),
                     &mut completed_slots,
-                    &cluster_info,
+                    &node_group_info,
                     &completed_slots_receiver,
                 );
             }
@@ -755,13 +755,13 @@ mod test {
             // Update with new root, should filter out the slots <= root
             root = num_slots / 2;
             let (blobs, _) = make_slot_entries(num_slots + 2, num_slots + 1, entries_per_slot);
-            blocktree.punctuate_info_objs(&blobs).unwrap();
+            block_buffer_pool.punctuate_info_objs(&blobs).unwrap();
             RepairService::update_epoch_slots(
                 Pubkey::default(),
                 root,
                 &mut 0,
                 &mut completed_slots,
-                &cluster_info,
+                &node_group_info,
                 &completed_slots_receiver,
             );
             expected.insert(num_slots + 2);
@@ -769,7 +769,7 @@ mod test {
             assert_eq!(completed_slots, expected);
             writer.join().unwrap();
         }
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -778,7 +778,7 @@ mod test {
 
         let mut completed_slots = BTreeSet::new();
         let node_info = Node::new_localhost_with_pubkey(&Pubkey::default());
-        let cluster_info = RwLock::new(ClusterInfo::new_with_invalid_keypair(
+        let node_group_info = RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
             node_info.info.clone(),
         ));
         let my_pubkey = Pubkey::new_rand();
@@ -794,15 +794,15 @@ mod test {
             current_root,
             &mut current_root.clone(),
             &mut completed_slots,
-            &cluster_info,
+            &node_group_info,
             &completed_slots_receiver,
         );
 
         // We should see epoch state update
         let (my_epoch_slots_in_gossip, updated_ts) = {
-            let r_cluster_info = cluster_info.read().unwrap();
+            let r_node_group_info = node_group_info.read().unwrap();
 
-            let (my_epoch_slots_in_gossip, updated_ts) = r_cluster_info
+            let (my_epoch_slots_in_gossip, updated_ts) = r_node_group_info
                 .get_epoch_state_for_node(&my_pubkey, None)
                 .clone()
                 .unwrap();
@@ -824,11 +824,11 @@ mod test {
             current_root,
             &mut current_root,
             &mut completed_slots,
-            &cluster_info,
+            &node_group_info,
             &completed_slots_receiver,
         );
 
-        assert!(cluster_info
+        assert!(node_group_info
             .read()
             .unwrap()
             .get_epoch_state_for_node(&my_pubkey, Some(updated_ts))
@@ -842,13 +842,13 @@ mod test {
             current_root + 1,
             &mut current_root,
             &mut completed_slots,
-            &cluster_info,
+            &node_group_info,
             &completed_slots_receiver,
         );
 
-        let r_cluster_info = cluster_info.read().unwrap();
+        let r_node_group_info = node_group_info.read().unwrap();
 
-        let (my_epoch_slots_in_gossip, _) = r_cluster_info
+        let (my_epoch_slots_in_gossip, _) = r_node_group_info
             .get_epoch_state_for_node(&my_pubkey, Some(updated_ts))
             .clone()
             .unwrap();

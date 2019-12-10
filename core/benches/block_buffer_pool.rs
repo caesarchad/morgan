@@ -36,7 +36,7 @@ fn bench_write_blobs(bench: &mut Bencher, blobs: &mut Vec<Blob>, ledger_path: &s
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 // Insert some blobs into the ledger in preparation for read benchmarks
@@ -114,7 +114,7 @@ fn bench_read_sequential(bench: &mut Bencher) {
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
@@ -145,7 +145,7 @@ fn bench_read_random(bench: &mut Bencher) {
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
@@ -168,7 +168,7 @@ fn bench_insert_data_blob_small(bench: &mut Bencher) {
         block_buffer_pool.record_objs(&blobs).unwrap();
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
@@ -190,5 +190,5 @@ fn bench_insert_data_blob_big(bench: &mut Bencher) {
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }

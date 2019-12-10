@@ -24,6 +24,7 @@ use std::thread::sleep;
 use std::thread::Builder;
 use std::time::Duration;
 use std::time::Instant;
+#[allow(unused_imports)]
 use ansi_term::Color::{Green};
 use morgan_helper::logHelper::*;
 
@@ -656,8 +657,8 @@ pub fn generate_and_fund_keypairs<T: Client>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use morgan::cluster_message::FULLNODE_PORT_RANGE;
-    use morgan::local_cluster::{ClusterConfig, LocalCluster};
+    use morgan::node_group_info::FULLNODE_PORT_RANGE;
+    use morgan::local_node_group::{NodeGroupConfig, LocalNodeGroup};
     use morgan::verifier::ValidatorConfig;
     use morgan_client::thin_client::create_client;
     use morgan_tokenbot::drone::run_local_drone;
@@ -683,19 +684,19 @@ mod tests {
     }
 
     #[test]
-    fn test_bench_tps_local_cluster() {
+    fn test_bench_tps_local_node_group() {
         morgan_logger::setup();
         let validator_config = ValidatorConfig::default();
         const NUM_NODES: usize = 1;
-        let cluster = LocalCluster::new(&ClusterConfig {
+        let node_group = LocalNodeGroup::new(&NodeGroupConfig {
             node_stakes: vec![999_990; NUM_NODES],
-            cluster_difs: 2_000_000,
+            node_group_difs: 2_000_000,
             validator_config,
-            ..ClusterConfig::default()
+            ..NodeGroupConfig::default()
         });
 
         let drone_keypair = Keypair::new();
-        cluster.transfer(&cluster.funding_keypair, &drone_keypair.pubkey(), 1_000_000);
+        node_group.transfer(&node_group.funding_keypair, &drone_keypair.pubkey(), 1_000_000);
 
         let (addr_sender, addr_receiver) = channel();
         run_local_drone(drone_keypair, addr_sender, None);
@@ -706,7 +707,7 @@ mod tests {
         config.duration = Duration::from_secs(5);
 
         let client = create_client(
-            (cluster.entry_point_info.rpc, cluster.entry_point_info.tpu),
+            (node_group.entry_point_info.rpc, node_group.entry_point_info.tpu),
             FULLNODE_PORT_RANGE,
         );
 

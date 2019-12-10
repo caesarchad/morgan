@@ -17,7 +17,7 @@ use crate::treasury_forks::BankForks;
 use crate::fetch_spot_stage::BlobFetchStage;
 use crate::block_stream_service::BlockstreamService;
 use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::water_clock_recorder::WaterClockRecorder;
 use crate::repeat_stage::ReplayStage;
@@ -52,18 +52,18 @@ impl Tvu {
     /// This service receives messages from a leader in the network and processes the transactions
     /// on the bank state.
     /// # Arguments
-    /// * `cluster_info` - The cluster_info state.
+    /// * `node_group_info` - The node_group_info state.
     /// * `sockets` - fetch, repair, and retransmit sockets
-    /// * `blocktree` - the ledger itself
+    /// * `block_buffer_pool` - the ledger itself
     #[allow(clippy::new_ret_no_self, clippy::too_many_arguments)]
     pub fn new<T>(
         vote_account: &Pubkey,
         voting_keypair: Option<&Arc<T>>,
         storage_keypair: &Arc<Keypair>,
         bank_forks: &Arc<RwLock<BankForks>>,
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         sockets: Sockets,
-        blocktree: Arc<BlockBufferPool>,
+        block_buffer_pool: Arc<BlockBufferPool>,
         storage_rotate_count: u64,
         storage_state: &StorageState,
         blockstream: Option<&String>,
@@ -78,9 +78,9 @@ impl Tvu {
     where
         T: 'static + KeypairUtil + Sync + Send,
     {
-        let keypair: Arc<Keypair> = cluster_info
+        let keypair: Arc<Keypair> = node_group_info
             .read()
-            .expect("Unable to read from cluster_info during Tvu creation")
+            .expect("Unable to read from node_group_info during Tvu creation")
             .keypair
             .clone();
 
@@ -104,8 +104,8 @@ impl Tvu {
         let retransmit_stage = RetransmitStage::new(
             bank_forks.clone(),
             leader_schedule_cache,
-            blocktree.clone(),
-            &cluster_info,
+            block_buffer_pool.clone(),
+            &node_group_info,
             Arc::new(retransmit_socket),
             repair_socket,
             blob_fetch_receiver,
@@ -119,9 +119,9 @@ impl Tvu {
             &keypair.pubkey(),
             vote_account,
             voting_keypair,
-            blocktree.clone(),
+            block_buffer_pool.clone(),
             &bank_forks,
-            cluster_info.clone(),
+            node_group_info.clone(),
             &exit,
             ledger_signal_receiver,
             subscriptions,
@@ -132,7 +132,7 @@ impl Tvu {
         let blockstream_service = if blockstream.is_some() {
             let blockstream_service = BlockstreamService::new(
                 slot_full_receiver,
-                blocktree.clone(),
+                block_buffer_pool.clone(),
                 blockstream.unwrap().to_string(),
                 &exit,
             );
@@ -144,13 +144,13 @@ impl Tvu {
         let storage_stage = StorageStage::new(
             storage_state,
             root_slot_receiver,
-            Some(blocktree),
+            Some(block_buffer_pool),
             &keypair,
             storage_keypair,
             &exit,
             &bank_forks,
             storage_rotate_count,
-            &cluster_info,
+            &node_group_info,
         );
 
         Tvu {
@@ -183,7 +183,7 @@ use std::{borrow::Cow, convert, ffi::OsStr, path::Path};
 static LICENSE_HEADER: &str = "Copyright (c) The Libra Core Contributors\n\
                                SPDX-License-Identifier: Apache-2.0\n\
                                ";
-
+#[allow(dead_code)]
 pub(super) fn has_license_header(file: &Path, contents: &str) -> Result<(), Cow<'static, str>> {
     enum FileType {
         Rust,
@@ -235,7 +235,7 @@ pub mod tests {
     use super::*;
     use crate::treasury_stage::create_test_recorder;
     use crate::block_buffer_pool::get_tmp_ledger_path;
-    use crate::cluster_message::{ClusterInfo, Node};
+    use crate::node_group_info::{NodeGroupInfo, Node};
     use crate::genesis_utils::{create_genesis_block, GenesisBlockInfo};
     use crate::storage_stage::STORAGE_ROTATE_TEST_COUNT;
     use morgan_runtime::bank::Bank;
@@ -254,18 +254,18 @@ pub mod tests {
         let bank_forks = BankForks::new(0, Bank::new(&genesis_block));
 
         //start cluster_info1
-        let mut cluster_info1 = ClusterInfo::new_with_invalid_keypair(target1.info.clone());
+        let mut cluster_info1 = NodeGroupInfo::new_with_invalid_keypair(target1.info.clone());
         cluster_info1.insert_info(leader.info.clone());
         let cref1 = Arc::new(RwLock::new(cluster_info1));
 
-        let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, l_receiver, completed_slots_receiver) =
-            BlockBufferPool::open_by_message(&blocktree_path)
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let (block_buffer_pool, l_receiver, completed_slots_receiver) =
+            BlockBufferPool::open_by_message(&block_buffer_pool_path)
                 .expect("Expected to successfully open ledger");
-        let blocktree = Arc::new(blocktree);
+        let block_buffer_pool = Arc::new(block_buffer_pool);
         let bank = bank_forks.working_bank();
         let (exit, waterclock_recorder, waterclock_service, _entry_receiver) =
-            create_test_recorder(&bank, &blocktree);
+            create_test_recorder(&bank, &block_buffer_pool);
         let voting_keypair = Keypair::new();
         let storage_keypair = Arc::new(Keypair::new());
         let leader_schedule_cache = Arc::new(LeaderScheduleCache::new_from_bank(&bank));
@@ -282,7 +282,7 @@ pub mod tests {
                     fetch: target1.sockets.tvu,
                 }
             },
-            blocktree,
+            block_buffer_pool,
             STORAGE_ROTATE_TEST_COUNT,
             &StorageState::default(),
             None,

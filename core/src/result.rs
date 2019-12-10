@@ -1,7 +1,7 @@
 //! The `result` module exposes a Result type that propagates one of many different Error types.
 
 use crate::block_buffer_pool;
-use crate::cluster_message;
+use crate::node_group_info;
 use crate::packet;
 use crate::water_clock_recorder;
 use bincode;
@@ -28,7 +28,7 @@ pub enum Error {
     TryRecvError(std::sync::mpsc::TryRecvError),
     Serialize(std::boxed::Box<bincode::ErrorKind>),
     TransactionError(transaction::TransactionError),
-    ClusterInfoError(cluster_message::ClusterInfoError),
+    NodeGroupInfoError(node_group_info::NodeGroupInfoError),
     BlobError(packet::BlobError),
     ErasureError(reed_solomon_erasure::Error),
     SendError,
@@ -66,9 +66,9 @@ impl std::convert::From<transaction::TransactionError> for Error {
         Error::TransactionError(e)
     }
 }
-impl std::convert::From<cluster_message::ClusterInfoError> for Error {
-    fn from(e: cluster_message::ClusterInfoError) -> Error {
-        Error::ClusterInfoError(e)
+impl std::convert::From<node_group_info::NodeGroupInfoError> for Error {
+    fn from(e: node_group_info::NodeGroupInfoError) -> Error {
+        Error::NodeGroupInfoError(e)
     }
 }
 impl std::convert::From<reed_solomon_erasure::Error> for Error {

@@ -245,7 +245,7 @@ impl Semaphore {
 }
 
 impl Permit {
-    fn release(&mut self) {
+    pub fn release(&mut self) {
         self.permit.release(&self.inner.semaphore);
     }
 }
@@ -256,12 +256,12 @@ impl Drop for Permit {
     }
 }
 
-struct PermitFuture {
-    permit: Option<Permit>,
+pub struct PermitFuture {
+    pub permit: Option<Permit>,
 }
 
 impl PermitFuture {
-    fn new(permit: Permit) -> Self {
+    pub fn new(permit: Permit) -> Self {
         Self {
             permit: Some(permit),
         }

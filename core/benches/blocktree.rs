@@ -15,7 +15,7 @@ use test::Bencher;
 
 // Given some blobs and a ledger at ledger_path, benchmark writing the blobs to the ledger
 fn bench_write_blobs(bench: &mut Bencher, blobs: &mut Vec<Blob>, ledger_path: &str) {
-    let blocktree =
+    let block_buffer_pool =
         BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     let num_blobs = blobs.len();
@@ -24,7 +24,7 @@ fn bench_write_blobs(bench: &mut Bencher, blobs: &mut Vec<Blob>, ledger_path: &s
         for blob in blobs.iter_mut() {
             let index = blob.index();
 
-            blocktree
+            block_buffer_pool
                 .place_info_obj_bytes(
                     blob.slot(),
                     index,
@@ -36,12 +36,12 @@ fn bench_write_blobs(bench: &mut Bencher, blobs: &mut Vec<Blob>, ledger_path: &s
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 // Insert some blobs into the ledger in preparation for read benchmarks
 fn setup_read_bench(
-    blocktree: &mut BlockBufferPool,
+    block_buffer_pool: &mut BlockBufferPool,
     num_small_blobs: u64,
     num_large_blobs: u64,
     slot: u64,
@@ -56,7 +56,7 @@ fn setup_read_bench(
         b.set_index(index as u64);
         b.set_slot(slot);
     }
-    blocktree
+    block_buffer_pool
         .record_objs(&blobs)
         .expect("Expectd successful insertion of blobs into ledger");
 }
@@ -94,7 +94,7 @@ fn bench_write_big(bench: &mut Bencher) {
 #[ignore]
 fn bench_read_sequential(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
-    let mut blocktree =
+    let mut block_buffer_pool =
         BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     // Insert some big and small blobs into the ledger
@@ -102,7 +102,7 @@ fn bench_read_sequential(bench: &mut Bencher) {
     let num_large_blobs = 32 * 1024;
     let total_blobs = num_small_blobs + num_large_blobs;
     let slot = 0;
-    setup_read_bench(&mut blocktree, num_small_blobs, num_large_blobs, slot);
+    setup_read_bench(&mut block_buffer_pool, num_small_blobs, num_large_blobs, slot);
 
     let num_reads = total_blobs / 15;
     let mut rng = rand::thread_rng();
@@ -110,18 +110,18 @@ fn bench_read_sequential(bench: &mut Bencher) {
         // Generate random starting point in the range [0, total_blobs - 1], read num_reads blobs sequentially
         let start_index = rng.gen_range(0, num_small_blobs + num_large_blobs);
         for i in start_index..start_index + num_reads {
-            let _ = blocktree.fetch_info_obj(slot, i as u64 % total_blobs);
+            let _ = block_buffer_pool.fetch_info_obj(slot, i as u64 % total_blobs);
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
 #[ignore]
 fn bench_read_random(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
-    let mut blocktree =
+    let mut block_buffer_pool =
         BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
     // Insert some big and small blobs into the ledger
@@ -129,7 +129,7 @@ fn bench_read_random(bench: &mut Bencher) {
     let num_large_blobs = 32 * 1024;
     let total_blobs = num_small_blobs + num_large_blobs;
     let slot = 0;
-    setup_read_bench(&mut blocktree, num_small_blobs, num_large_blobs, slot);
+    setup_read_bench(&mut block_buffer_pool, num_small_blobs, num_large_blobs, slot);
 
     let num_reads = total_blobs / 15;
 
@@ -141,18 +141,18 @@ fn bench_read_random(bench: &mut Bencher) {
         .collect();
     bench.iter(move || {
         for i in indexes.iter() {
-            let _ = blocktree.fetch_info_obj(slot, *i as u64);
+            let _ = block_buffer_pool.fetch_info_obj(slot, *i as u64);
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
 #[ignore]
 fn bench_insert_data_blob_small(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
-    let blocktree =
+    let block_buffer_pool =
         BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
     let num_entries = 32 * 1024;
     let entries = make_tiny_test_entries(num_entries);
@@ -165,17 +165,17 @@ fn bench_insert_data_blob_small(bench: &mut Bencher) {
             let index = blob.index();
             blob.set_index(index + num_entries as u64);
         }
-        blocktree.record_objs(&blobs).unwrap();
+        block_buffer_pool.record_objs(&blobs).unwrap();
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }
 
 #[bench]
 #[ignore]
 fn bench_insert_data_blob_big(bench: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
-    let blocktree =
+    let block_buffer_pool =
         BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
     let num_entries = 32 * 1024;
     let entries = make_large_test_entries(num_entries);
@@ -185,10 +185,10 @@ fn bench_insert_data_blob_big(bench: &mut Bencher) {
     bench.iter(move || {
         for blob in shared_blobs.iter_mut() {
             let index = blob.read().unwrap().index();
-            blocktree.record_public_objs(vec![blob.clone()]).unwrap();
+            block_buffer_pool.record_public_objs(vec![blob.clone()]).unwrap();
             blob.write().unwrap().set_index(index + num_entries as u64);
         }
     });
 
-    BlockBufferPool::destruct(&ledger_path).expect("Expected successful database destruction");
+    BlockBufferPool::remove_ledger_file(&ledger_path).expect("Expected successful database destruction");
 }

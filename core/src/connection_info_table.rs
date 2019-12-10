@@ -1,4 +1,4 @@
-//! This module implements Cluster Replicated Data Store for
+//! This module implements NodeGroup Replicated Data Store for
 //! asynchronous updates in a distributed network.
 //!
 //! Data is stored in the CrdsValue type, each type has a specific

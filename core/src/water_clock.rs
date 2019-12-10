@@ -96,7 +96,7 @@ where
     Ok(())
 }
 
-fn read_u16frame_len<TSocket>(stream: &mut TSocket) -> Result<u16>
+pub fn read_u16frame_len<TSocket>(stream: &mut TSocket) -> Result<u16>
 where
     TSocket: AsyncRead + Unpin,
 {

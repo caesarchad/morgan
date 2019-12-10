@@ -4,12 +4,25 @@ use bincode::{deserialize, serialize};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::Arc;
+
+
+pub enum DaemonDbDumpPolicy {
+    
+    NeverDump,
+    
+    AutoDump,
+    
+    DumpUponRequest,
+ 
+    PeriodicDump(Duration),
+}
+
 
 pub mod columns {
     #[derive(Debug)]
@@ -34,10 +47,10 @@ pub mod columns {
 
     #[derive(Debug)]
     /// The root column
-    pub struct Root;
+    pub struct BaseColumn;
 }
 
-pub trait Backend: Sized + Send + Sync {
+pub trait DaemonDb: Sized + Send + Sync {
     type Key: ?Sized + ToOwned<Owned = Self::OwnedKey>;
     type OwnedKey: Borrow<Self::Key>;
     type ColumnFamily: Clone;
@@ -71,7 +84,7 @@ pub trait Backend: Sized + Send + Sync {
 
 pub trait Column<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     const NAME: &'static str;
     type Index;
@@ -82,7 +95,7 @@ where
 
 pub trait DbCursor<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     fn valid(&self) -> bool;
 
@@ -99,7 +112,7 @@ where
 
 pub trait IWriteBatch<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     fn put_cf(&mut self, cf: B::ColumnFamily, key: &B::Key, value: &[u8]) -> Result<()>;
     fn delete_cf(&mut self, cf: B::ColumnFamily, key: &B::Key) -> Result<()>;
@@ -107,7 +120,7 @@ where
 
 pub trait TypedColumn<B>: Column<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     type Type: Serialize + DeserializeOwned;
 }
@@ -115,7 +128,7 @@ where
 #[derive(Debug, Clone)]
 pub struct Database<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     backend: Arc<B>,
 }
@@ -123,7 +136,7 @@ where
 #[derive(Debug, Clone)]
 pub struct BatchProcessor<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     backend: Arc<B>,
 }
@@ -131,7 +144,7 @@ where
 #[derive(Debug, Clone)]
 pub struct Cursor<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: Column<B>,
 {
     db_cursor: B::Cursor,
@@ -142,7 +155,7 @@ where
 #[derive(Debug, Clone)]
 pub struct LedgerColumn<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: Column<B>,
 {
     backend: Arc<B>,
@@ -152,7 +165,7 @@ where
 #[derive(Debug)]
 pub struct WriteBatch<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     write_batch: B::WriteBatch,
     backend: PhantomData<B>,
@@ -161,7 +174,7 @@ where
 
 impl<B> Database<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     pub fn open(path: &Path) -> Result<Self> {
         let backend = Arc::new(B::open(path)?);
@@ -281,8 +294,8 @@ where
 
     // Note this returns an object that can be used to directly write to multiple column families.
     // This circumvents the synchronization around APIs that in BlockBufferPool that use
-    // blocktree.batch_processor, so this API should only be used if the caller is sure they
-    // are writing to data in columns that will not be corrupted by any simultaneous blocktree
+    // block_buffer_pool.batch_processor, so this API should only be used if the caller is sure they
+    // are writing to data in columns that will not be corrupted by any simultaneous block_buffer_pool
     // operations.
     pub unsafe fn batch_processor(&self) -> BatchProcessor<B> {
         BatchProcessor {
@@ -293,7 +306,7 @@ where
 
 impl<B> BatchProcessor<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     pub fn batch(&mut self) -> Result<WriteBatch<B>> {
         let db_write_batch = self.backend.batch()?;
@@ -318,7 +331,7 @@ where
 
 impl<B, C> Cursor<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: Column<B>,
 {
     pub fn valid(&self) -> bool {
@@ -352,7 +365,7 @@ where
 
 impl<B, C> Cursor<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: TypedColumn<B>,
 {
     pub fn value(&self) -> Option<C::Type> {
@@ -367,7 +380,7 @@ where
 
 impl<B, C> LedgerColumn<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: Column<B>,
 {
     pub fn get_bytes(&self, key: C::Index) -> Result<Option<Vec<u8>>> {
@@ -424,7 +437,7 @@ where
 
 impl<B, C> LedgerColumn<B, C>
 where
-    B: Backend,
+    B: DaemonDb,
     C: TypedColumn<B>,
 {
     pub fn get(&self, key: C::Index) -> Result<Option<C::Type>> {
@@ -447,7 +460,7 @@ where
 
 impl<B> WriteBatch<B>
 where
-    B: Backend,
+    B: DaemonDb,
 {
     pub fn put_bytes<C: Column<B>>(&mut self, key: C::Index, bytes: &[u8]) -> Result<()> {
         self.write_batch

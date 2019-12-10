@@ -1,6 +1,6 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg, SubCommand};
 use morgan::block_buffer_pool::BlockBufferPool;
-use morgan::block_buffer_pool_processor::process_blocktree;
+use morgan::block_buffer_pool_processor::process_block_buffer_pool;
 use morgan_interface::genesis_block::GenesisBlock;
 use std::io::{stdout, Write};
 use std::process::exit;
@@ -55,15 +55,15 @@ fn main() {
         exit(1);
     });
 
-    let blocktree = match BlockBufferPool::open_ledger_file(ledger_path) {
-        Ok(blocktree) => blocktree,
+    let block_buffer_pool = match BlockBufferPool::open_ledger_file(ledger_path) {
+        Ok(block_buffer_pool) => block_buffer_pool,
         Err(err) => {
             eprintln!("Failed to open ledger at {}: {}", ledger_path, err);
             exit(1);
         }
     };
 
-    let entries = match blocktree.extract_bill() {
+    let entries = match block_buffer_pool.extract_bill() {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Failed to read ledger at {}: {}", ledger_path, err);
@@ -111,7 +111,7 @@ fn main() {
             }
             stdout().write_all(b"\n]}\n").expect("close array");
         }
-        ("verify", _) => match process_blocktree(&genesis_block, &blocktree, None) {
+        ("verify", _) => match process_block_buffer_pool(&genesis_block, &block_buffer_pool, None) {
             Ok((_bank_forks, bank_forks_info, _)) => {
                 println!("{:?}", bank_forks_info);
             }

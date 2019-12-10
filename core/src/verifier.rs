@@ -4,9 +4,9 @@
 use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::{BlockBufferPool, CompletedSlotsReceiver};
 use crate::block_buffer_pool_processor::{self, BankForksInfo};
-use crate::cluster_message::{ClusterInfo, Node};
+use crate::node_group_info::{NodeGroupInfo, Node};
 use crate::connection_info::ContactInfo;
-use crate::gossip_service::{discover_cluster, GossipService};
+use crate::gossip_service::{find_node_group_host, GossipService};
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::water_clock_recorder::WaterClockRecorder;
 use crate::water_clock_service::WaterClockService;
@@ -100,12 +100,12 @@ impl Validator {
         let (
             bank_forks,
             bank_forks_info,
-            blocktree,
+            block_buffer_pool,
             ledger_signal_receiver,
             completed_slots_receiver,
             leader_schedule_cache,
             waterclock_config,
-        ) = new_banks_from_blocktree(ledger_path, config.account_paths.clone());
+        ) = new_banks_from_block_buffer(ledger_path, config.account_paths.clone());
 
         let leader_schedule_cache = Arc::new(leader_schedule_cache);
         let exit = Arc::new(AtomicBool::new(false));
@@ -126,25 +126,25 @@ impl Validator {
                 module_path!().to_string()
             )
         );
-        let blocktree = Arc::new(blocktree);
+        let block_buffer_pool = Arc::new(block_buffer_pool);
 
         let waterclock_config = Arc::new(waterclock_config);
         let (waterclock_recorder, entry_receiver) = WaterClockRecorder::new_with_clear_signal(
             bank.tick_height(),
             bank.last_blockhash(),
             bank.slot(),
-            leader_schedule_cache.next_leader_slot(&id, bank.slot(), &bank, Some(&blocktree)),
+            leader_schedule_cache.next_leader_slot(&id, bank.slot(), &bank, Some(&block_buffer_pool)),
             bank.ticks_per_slot(),
             &id,
-            &blocktree,
-            blocktree.new_blobs_signals.first().cloned(),
+            &block_buffer_pool,
+            block_buffer_pool.new_blobs_signals.first().cloned(),
             &leader_schedule_cache,
             &waterclock_config,
         );
         let waterclock_recorder = Arc::new(Mutex::new(waterclock_recorder));
         let waterclock_service = WaterClockService::new(waterclock_recorder.clone(), &waterclock_config, &exit);
         assert_eq!(
-            blocktree.new_blobs_signals.len(),
+            block_buffer_pool.new_blobs_signals.len(),
             1,
             "New blob signal for the TVU should be the same as the clear bank signal."
         );
@@ -178,7 +178,7 @@ impl Validator {
         let bank_forks = Arc::new(RwLock::new(bank_forks));
 
         node.info.wallclock = timestamp();
-        let cluster_info = Arc::new(RwLock::new(ClusterInfo::new(
+        let node_group_info = Arc::new(RwLock::new(NodeGroupInfo::new(
             node.info.clone(),
             keypair.clone(),
         )));
@@ -189,7 +189,7 @@ impl Validator {
             None
         } else {
             Some(JsonRpcService::new(
-                &cluster_info,
+                &node_group_info,
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), node.info.rpc.port()),
                 storage_state.clone(),
                 config.rpc_config.clone(),
@@ -216,8 +216,8 @@ impl Validator {
         };
 
         let gossip_service = GossipService::new(
-            &cluster_info,
-            Some(blocktree.clone()),
+            &node_group_info,
+            Some(block_buffer_pool.clone()),
             Some(bank_forks.clone()),
             node.sockets.gossip,
             &exit,
@@ -227,7 +227,7 @@ impl Validator {
         // is the bootstrap leader
 
         if let Some(entrypoint_info) = entrypoint_info_option {
-            cluster_info
+            node_group_info
                 .write()
                 .unwrap()
                 .set_entrypoint(entrypoint_info.clone());
@@ -263,9 +263,9 @@ impl Validator {
             voting_keypair,
             storage_keypair,
             &bank_forks,
-            &cluster_info,
+            &node_group_info,
             sockets,
-            blocktree.clone(),
+            block_buffer_pool.clone(),
             config.storage_rotate_count,
             &storage_state,
             config.blockstream.as_ref(),
@@ -291,14 +291,14 @@ impl Validator {
 
         let tpu = Tpu::new(
             &id,
-            &cluster_info,
+            &node_group_info,
             &waterclock_recorder,
             entry_receiver,
             node.sockets.tpu,
             node.sockets.tpu_via_blobs,
             node.sockets.broadcast,
             config.sigverify_disabled,
-            &blocktree,
+            &block_buffer_pool,
             &exit,
             &genesis_blockhash,
         );
@@ -329,8 +329,8 @@ impl Validator {
     }
 }
 
-pub fn new_banks_from_blocktree(
-    blocktree_path: &str,
+pub fn new_banks_from_block_buffer(
+    block_buffer_pool_path: &str,
     account_paths: Option<String>,
 ) -> (
     BankForks,
@@ -342,20 +342,20 @@ pub fn new_banks_from_blocktree(
     WaterClockConfig,
 ) {
     let genesis_block =
-        GenesisBlock::load(blocktree_path).expect("Expected to successfully open genesis block");
+        GenesisBlock::load(block_buffer_pool_path).expect("Expected to successfully open genesis block");
 
-    let (blocktree, ledger_signal_receiver, completed_slots_receiver) =
-        BlockBufferPool::open_by_message(blocktree_path)
+    let (block_buffer_pool, ledger_signal_receiver, completed_slots_receiver) =
+        BlockBufferPool::open_by_message(block_buffer_pool_path)
             .expect("Expected to successfully open database ledger");
 
     let (bank_forks, bank_forks_info, leader_schedule_cache) =
-        block_buffer_pool_processor::process_blocktree(&genesis_block, &blocktree, account_paths)
-            .expect("process_blocktree failed");
+        block_buffer_pool_processor::process_block_buffer_pool(&genesis_block, &block_buffer_pool, account_paths)
+            .expect("process_block_buffer_pool failed");
 
     (
         bank_forks,
         bank_forks_info,
-        blocktree,
+        block_buffer_pool,
         ledger_signal_receiver,
         completed_slots_receiver,
         leader_schedule_cache,
@@ -416,7 +416,7 @@ pub fn new_validator_for_tests() -> (Validator, ContactInfo, Keypair, String) {
         None,
         &ValidatorConfig::default(),
     );
-    discover_cluster(&contact_info.gossip, 1).expect("Node startup failed");
+    find_node_group_host(&contact_info.gossip, 1).expect("Node startup failed");
     (node, contact_info, mint_keypair, ledger_path)
 }
 

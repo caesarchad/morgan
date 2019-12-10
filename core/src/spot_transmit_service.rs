@@ -1,8 +1,8 @@
 //! `window_service` handles the data plane incoming blobs, storing them in
-//!   blocktree and retransmitting where required
+//!   block_buffer_pool and retransmitting where required
 //!
 use crate::block_buffer_pool::BlockBufferPool;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::leader_arrange_cache::LeaderScheduleCache;
 use crate::packet::{Blob, SharedBlob, BLOB_HEADER_SIZE};
 use crate::fix_missing_spot_service::{RepairService, RepairStrategy};
@@ -47,11 +47,11 @@ fn retransmit_blobs(blobs: &[SharedBlob], retransmit: &BlobSender, id: &Pubkey) 
 }
 
 /// Process a blob: Add blob to the ledger window.
-fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<BlockBufferPool>) -> Result<()> {
+fn process_blobs(blobs: &[SharedBlob], block_buffer_pool: &Arc<BlockBufferPool>) -> Result<()> {
     // make an iterator for punctuate_info_objs()
     let blobs: Vec<_> = blobs.iter().map(move |blob| blob.read().unwrap()).collect();
 
-    blocktree.punctuate_info_objs(blobs.iter().filter_map(|blob| {
+    block_buffer_pool.punctuate_info_objs(blobs.iter().filter_map(|blob| {
         if !blob.is_coding() {
             Some(&(**blob))
         } else {
@@ -65,7 +65,7 @@ fn process_blobs(blobs: &[SharedBlob], blocktree: &Arc<BlockBufferPool>) -> Resu
 
         // Insert the new blob into block tree
         if blob.is_coding() {
-            blocktree.place_encrypting_obj_bytes(
+            block_buffer_pool.place_encrypting_obj_bytes(
                 blob.slot(),
                 blob.index(),
                 &blob.data[..BLOB_HEADER_SIZE + blob.size()],
@@ -105,7 +105,7 @@ pub fn should_retransmit_and_persist(
 }
 
 fn recv_window<F>(
-    blocktree: &Arc<BlockBufferPool>,
+    block_buffer_pool: &Arc<BlockBufferPool>,
     my_pubkey: &Pubkey,
     r: &BlobReceiver,
     retransmit: &BlobSender,
@@ -133,7 +133,7 @@ where
 
     trace!("{} num blobs received: {}", my_pubkey, blobs.len());
 
-    process_blobs(&blobs, blocktree)?;
+    process_blobs(&blobs, block_buffer_pool)?;
 
     trace!(
         "Elapsed processing time in recv_window(): {}",
@@ -169,8 +169,8 @@ pub struct WindowService {
 impl WindowService {
     #[allow(clippy::too_many_arguments)]
     pub fn new<F>(
-        blocktree: Arc<BlockBufferPool>,
-        cluster_info: Arc<RwLock<ClusterInfo>>,
+        block_buffer_pool: Arc<BlockBufferPool>,
+        node_group_info: Arc<RwLock<NodeGroupInfo>>,
         r: BlobReceiver,
         retransmit: BlobSender,
         repair_socket: Arc<UdpSocket>,
@@ -192,10 +192,10 @@ impl WindowService {
         };
 
         let repair_service = RepairService::new(
-            blocktree.clone(),
+            block_buffer_pool.clone(),
             exit.clone(),
             repair_socket,
-            cluster_info.clone(),
+            node_group_info.clone(),
             repair_strategy,
         );
         let exit = exit.clone();
@@ -206,14 +206,14 @@ impl WindowService {
             .name("morgan-window".to_string())
             .spawn(move || {
                 let _exit = Finalizer::new(exit.clone());
-                let id = cluster_info.read().unwrap().id();
+                let id = node_group_info.read().unwrap().id();
                 trace!("{}: RECV_WINDOW started", id);
                 loop {
                     if exit.load(Ordering::Relaxed) {
                         break;
                     }
 
-                    if let Err(e) = recv_window(&blocktree, &id, &r, &retransmit, &hash, |blob| {
+                    if let Err(e) = recv_window(&block_buffer_pool, &id, &r, &retransmit, &hash, |blob| {
                         blob_filter(
                             &id,
                             blob,
@@ -264,7 +264,7 @@ mod test {
     // use crate::bank_forks::BankForks;
     use crate::treasury_forks::BankForks;
     use crate::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
-    use crate::cluster_message::{ClusterInfo, Node};
+    use crate::node_group_info::{NodeGroupInfo, Node};
     use crate::entry_info::{make_consecutive_blobs, make_tiny_test_entries, EntrySlice};
     use crate::genesis_utils::create_genesis_block_with_leader;
     use crate::packet::{index_blobs, Blob};
@@ -281,8 +281,8 @@ mod test {
 
     #[test]
     fn test_process_blob() {
-        let blocktree_path = get_tmp_ledger_path!();
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&blocktree_path).unwrap());
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap());
         let num_entries = 10;
         let original_entries = make_tiny_test_entries(num_entries);
         let shared_blobs = original_entries.clone().to_shared_blobs();
@@ -290,16 +290,16 @@ mod test {
         index_blobs(&shared_blobs, &Pubkey::new_rand(), 0, 0, 0);
 
         for blob in shared_blobs.into_iter().rev() {
-            process_blobs(&[blob], &blocktree).expect("Expect successful processing of blob");
+            process_blobs(&[blob], &block_buffer_pool).expect("Expect successful processing of blob");
         }
 
         assert_eq!(
-            blocktree.fetch_slit_items(0, 0, None).unwrap(),
+            block_buffer_pool.fetch_slit_items(0, 0, None).unwrap(),
             original_entries
         );
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 
     #[test]
@@ -356,17 +356,17 @@ mod test {
         let leader_node = Node::new_localhost();
         let validator_node = Node::new_localhost();
         let exit = Arc::new(AtomicBool::new(false));
-        let cluster_info_me = ClusterInfo::new_with_invalid_keypair(validator_node.info.clone());
+        let cluster_info_me = NodeGroupInfo::new_with_invalid_keypair(validator_node.info.clone());
         let me_id = leader_node.info.id;
         let subs = Arc::new(RwLock::new(cluster_info_me));
 
         let (s_reader, r_reader) = channel();
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
-        let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&blocktree_path)
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let (block_buffer_pool, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&block_buffer_pool_path)
             .expect("Expected to be able to open database ledger");
-        let blocktree = Arc::new(blocktree);
+        let block_buffer_pool = Arc::new(block_buffer_pool);
 
         let bank = Bank::new(&create_genesis_block_with_leader(100, &me_id, 10).genesis_block);
         let bank_forks = Arc::new(RwLock::new(BankForks::new(0, bank)));
@@ -381,7 +381,7 @@ mod test {
                 .clone(),
         };
         let t_window = WindowService::new(
-            blocktree,
+            block_buffer_pool,
             subs,
             r_reader,
             s_retransmit,
@@ -431,8 +431,8 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
-        let _ignored = remove_dir_all(&blocktree_path);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
+        let _ignored = remove_dir_all(&block_buffer_pool_path);
     }
 
     #[test]
@@ -443,18 +443,18 @@ mod test {
         let leader_node = Node::new_localhost();
         let validator_node = Node::new_localhost();
         let exit = Arc::new(AtomicBool::new(false));
-        let cluster_info_me = ClusterInfo::new_with_invalid_keypair(validator_node.info.clone());
+        let cluster_info_me = NodeGroupInfo::new_with_invalid_keypair(validator_node.info.clone());
         let me_id = leader_node.info.id;
         let subs = Arc::new(RwLock::new(cluster_info_me));
 
         let (s_reader, r_reader) = channel();
         let t_receiver = blob_receiver(Arc::new(leader_node.sockets.gossip), &exit, s_reader);
         let (s_retransmit, r_retransmit) = channel();
-        let blocktree_path = get_tmp_ledger_path!();
-        let (blocktree, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&blocktree_path)
+        let block_buffer_pool_path = get_tmp_ledger_path!();
+        let (block_buffer_pool, _, completed_slots_receiver) = BlockBufferPool::open_by_message(&block_buffer_pool_path)
             .expect("Expected to be able to open database ledger");
 
-        let blocktree = Arc::new(blocktree);
+        let block_buffer_pool = Arc::new(block_buffer_pool);
         let bank = Bank::new(&create_genesis_block_with_leader(100, &me_id, 10).genesis_block);
         let bank_forks = Arc::new(RwLock::new(BankForks::new(0, bank)));
         let epoch_schedule = *bank_forks.read().unwrap().working_bank().epoch_schedule();
@@ -464,7 +464,7 @@ mod test {
             epoch_schedule,
         };
         let t_window = WindowService::new(
-            blocktree,
+            block_buffer_pool,
             subs.clone(),
             r_reader,
             s_retransmit,
@@ -506,7 +506,7 @@ mod test {
         t_receiver.join().expect("join");
         t_responder.join().expect("join");
         t_window.join().expect("join");
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
-        let _ignored = remove_dir_all(&blocktree_path);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
+        let _ignored = remove_dir_all(&block_buffer_pool_path);
     }
 }

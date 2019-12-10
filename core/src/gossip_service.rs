@@ -3,8 +3,8 @@
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
 use crate::block_buffer_pool::BlockBufferPool;
-use crate::cluster_message::ClusterInfo;
-use crate::cluster_message::FULLNODE_PORT_RANGE;
+use crate::node_group_info::NodeGroupInfo;
+use crate::node_group_info::FULLNODE_PORT_RANGE;
 use crate::connection_info::ContactInfo;
 use crate::service::Service;
 use crate::streamer;
@@ -33,8 +33,8 @@ pub struct GossipService {
 
 impl GossipService {
     pub fn new(
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
-        blocktree: Option<Arc<BlockBufferPool>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
+        block_buffer_pool: Option<Arc<BlockBufferPool>>,
         bank_forks: Option<Arc<RwLock<BankForks>>>,
         gossip_socket: UdpSocket,
         exit: &Arc<AtomicBool>,
@@ -43,27 +43,27 @@ impl GossipService {
         let gossip_socket = Arc::new(gossip_socket);
         trace!(
             "GossipService: id: {}, listening on: {:?}",
-            &cluster_info.read().unwrap().my_data().id,
+            &node_group_info.read().unwrap().my_data().id,
             gossip_socket.local_addr().unwrap()
         );
         let t_receiver = streamer::blob_receiver(gossip_socket.clone(), &exit, request_sender);
         let (response_sender, response_receiver) = channel();
         let t_responder = streamer::responder("gossip", gossip_socket, response_receiver);
-        let t_listen = ClusterInfo::listen(
-            cluster_info.clone(),
-            blocktree,
+        let t_listen = NodeGroupInfo::listen(
+            node_group_info.clone(),
+            block_buffer_pool,
             request_receiver,
             response_sender.clone(),
             exit,
         );
-        let t_gossip = ClusterInfo::gossip(cluster_info.clone(), bank_forks, response_sender, exit);
+        let t_gossip = NodeGroupInfo::gossip(node_group_info.clone(), bank_forks, response_sender, exit);
         let thread_hdls = vec![t_receiver, t_responder, t_listen, t_gossip];
         Self { thread_hdls }
     }
 }
 
 /// Discover Nodes and miners in a cluster
-pub fn discover_cluster(
+pub fn find_node_group_host(
     entry_point: &SocketAddr,
     num_nodes: usize,
 ) -> std::io::Result<(Vec<ContactInfo>, Vec<ContactInfo>)> {
@@ -253,7 +253,7 @@ pub fn get_client(nodes: &[ContactInfo]) -> ThinClient {
 }
 
 fn spy(
-    spy_ref: Arc<RwLock<ClusterInfo>>,
+    spy_ref: Arc<RwLock<NodeGroupInfo>>,
     num_nodes: Option<usize>,
     timeout: Option<u64>,
     find_node: Option<Pubkey>,
@@ -276,7 +276,7 @@ fn spy(
             .unwrap()
             .tvu_peers()
             .into_iter()
-            .filter(|node| !ClusterInfo::is_storage_miner(&node))
+            .filter(|node| !NodeGroupInfo::is_storage_miner(&node))
             .collect::<Vec<_>>();
         miners = spy_ref.read().unwrap().storage_peers();
         if let Some(num) = num_nodes {
@@ -323,7 +323,7 @@ fn spy(
             );
         }
         sleep(Duration::from_millis(
-            crate::cluster_message::GOSSIP_SLEEP_MILLIS,
+            crate::node_group_info::GOSSIP_SLEEP_MILLIS,
         ));
         i += 1;
     }
@@ -341,19 +341,19 @@ fn make_gossip_node(
     entry_point: &SocketAddr,
     exit: &Arc<AtomicBool>,
     gossip_addr: Option<&SocketAddr>,
-) -> (GossipService, Arc<RwLock<ClusterInfo>>) {
+) -> (GossipService, Arc<RwLock<NodeGroupInfo>>) {
     let keypair = Arc::new(Keypair::new());
     let (node, gossip_socket) = if let Some(gossip_addr) = gossip_addr {
-        ClusterInfo::gossip_node(&keypair.pubkey(), gossip_addr)
+        NodeGroupInfo::gossip_node(&keypair.pubkey(), gossip_addr)
     } else {
-        ClusterInfo::spy_node(&keypair.pubkey())
+        NodeGroupInfo::spy_node(&keypair.pubkey())
     };
-    let mut cluster_info = ClusterInfo::new(node, keypair);
-    cluster_info.set_entrypoint(ContactInfo::new_gossip_entry_point(entry_point));
-    let cluster_info = Arc::new(RwLock::new(cluster_info));
+    let mut node_group_info = NodeGroupInfo::new(node, keypair);
+    node_group_info.set_entrypoint(ContactInfo::new_gossip_entry_point(entry_point));
+    let node_group_info = Arc::new(RwLock::new(node_group_info));
     let gossip_service =
-        GossipService::new(&cluster_info.clone(), None, None, gossip_socket, &exit);
-    (gossip_service, cluster_info)
+        GossipService::new(&node_group_info.clone(), None, None, gossip_socket, &exit);
+    (gossip_service, node_group_info)
 }
 
 impl Service for GossipService {
@@ -370,7 +370,7 @@ impl Service for GossipService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cluster_message::{ClusterInfo, Node};
+    use crate::node_group_info::{NodeGroupInfo, Node};
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, RwLock};
 
@@ -380,8 +380,8 @@ mod tests {
     fn test_exit() {
         let exit = Arc::new(AtomicBool::new(false));
         let tn = Node::new_localhost();
-        let cluster_info = ClusterInfo::new_with_invalid_keypair(tn.info.clone());
-        let c = Arc::new(RwLock::new(cluster_info));
+        let node_group_info = NodeGroupInfo::new_with_invalid_keypair(tn.info.clone());
+        let c = Arc::new(RwLock::new(node_group_info));
         let d = GossipService::new(&c, None, None, tn.sockets.gossip, &exit);
         exit.store(true, Ordering::Relaxed);
         d.join().unwrap();
@@ -395,11 +395,11 @@ mod tests {
         let contact_info = ContactInfo::new_localhost(&keypair.pubkey(), 0);
         let peer0_info = ContactInfo::new_localhost(&peer0, 0);
         let peer1_info = ContactInfo::new_localhost(&peer1, 0);
-        let mut cluster_info = ClusterInfo::new(contact_info.clone(), Arc::new(keypair));
-        cluster_info.insert_info(peer0_info);
-        cluster_info.insert_info(peer1_info);
+        let mut node_group_info = NodeGroupInfo::new(contact_info.clone(), Arc::new(keypair));
+        node_group_info.insert_info(peer0_info);
+        node_group_info.insert_info(peer1_info);
 
-        let spy_ref = Arc::new(RwLock::new(cluster_info));
+        let spy_ref = Arc::new(RwLock::new(node_group_info));
 
         let (met_criteria, secs, tvu_peers, _) = spy(spy_ref.clone(), None, Some(1), None);
         assert_eq!(met_criteria, false);

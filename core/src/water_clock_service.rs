@@ -89,7 +89,7 @@ where
     Ok(())
 }
 
-fn write_u16frame_len<TSocket>(stream: &mut TSocket, len: u16) -> Result<()>
+pub fn write_u16frame_len<TSocket>(stream: &mut TSocket, len: u16) -> Result<()>
 where
     TSocket: AsyncWrite + Unpin,
 {
@@ -119,7 +119,7 @@ mod tests {
         let prev_hash = bank.last_blockhash();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let waterclock_config = Arc::new(WaterClockConfig {
                 hashes_per_tick: Some(2),
@@ -132,7 +132,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &waterclock_config,
             );
@@ -212,6 +212,6 @@ mod tests {
             let _ = waterclock_service.join().unwrap();
             let _ = entry_producer.join().unwrap();
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 }

@@ -1,5 +1,5 @@
 use crate::block_buffer_pool::db::columns as cf;
-use crate::block_buffer_pool::db::{Backend, Column, DbCursor, IWriteBatch, TypedColumn};
+use crate::block_buffer_pool::db::{DaemonDb, Column, DbCursor, IWriteBatch, TypedColumn};
 use crate::block_buffer_pool::BlockBufferPoolError;
 use crate::result::{Error, Result};
 
@@ -18,9 +18,9 @@ const TOTAL_THREADS: i32 = 8;
 const MAX_WRITE_BUFFER_SIZE: usize = 512 * 1024 * 1024;
 
 #[derive(Debug)]
-pub struct Rocks(rocksdb::DB);
+pub struct RocksDB(rocksdb::DB);
 
-impl Backend for Rocks {
+impl DaemonDb for RocksDB {
     type Key = [u8];
     type OwnedKey = Vec<u8>;
     type ColumnFamily = ColumnFamily;
@@ -29,8 +29,8 @@ impl Backend for Rocks {
     type WriteBatch = RWriteBatch;
     type Error = rocksdb::Error;
 
-    fn open(path: &Path) -> Result<Rocks> {
-        use crate::block_buffer_pool::db::columns::{Coding, Data, ErasureMeta, Orphans, Root, SlotMeta};
+    fn open(path: &Path) -> Result<RocksDB> {
+        use crate::block_buffer_pool::db::columns::{Coding, Data, ErasureMeta, Orphans, BaseColumn, SlotMeta};
 
         fs::create_dir_all(&path)?;
 
@@ -38,38 +38,58 @@ impl Backend for Rocks {
         let db_options = get_db_options();
 
         // Column family names
-        let meta_cf_descriptor = ColumnFamilyDescriptor::new(SlotMeta::NAME, get_cf_options());
-        let data_cf_descriptor = ColumnFamilyDescriptor::new(Data::NAME, get_cf_options());
-        let erasure_cf_descriptor = ColumnFamilyDescriptor::new(Coding::NAME, get_cf_options());
-        let erasure_meta_cf_descriptor =
+        /*
+        let metainfo_column_group_info = ColumnFamilyDescriptor::new(SlotMeta::NAME, get_cf_options());
+        let data_column_group_info = ColumnFamilyDescriptor::new(Data::NAME, get_cf_options());
+        let erasure_column_group_info = ColumnFamilyDescriptor::new(Coding::NAME, get_cf_options());
+        let erasure_metainfo_column_group_info =
             ColumnFamilyDescriptor::new(ErasureMeta::NAME, get_cf_options());
-        let orphans_cf_descriptor = ColumnFamilyDescriptor::new(Orphans::NAME, get_cf_options());
-        let root_cf_descriptor = ColumnFamilyDescriptor::new(Root::NAME, get_cf_options());
+        let singleton_column_group_info = ColumnFamilyDescriptor::new(Orphans::NAME, get_cf_options());
+        let genesis_column_group_info = ColumnFamilyDescriptor::new(BaseColumn::NAME, get_cf_options());
+        */
+        let (
+            metainfo_column_group_info,
+            data_column_group_info,
+            erasure_column_group_info,
+            erasure_metainfo_column_group_info,
+            singleton_column_group_info,
+            genesis_column_group_info
+        ) = (
+            ColumnFamilyDescriptor::new(SlotMeta::NAME, get_cf_options()),
+            ColumnFamilyDescriptor::new(Data::NAME, get_cf_options()),
+            ColumnFamilyDescriptor::new(Coding::NAME, get_cf_options()),
+            ColumnFamilyDescriptor::new(ErasureMeta::NAME, get_cf_options()),
+            ColumnFamilyDescriptor::new(Orphans::NAME, get_cf_options()),
+            ColumnFamilyDescriptor::new(BaseColumn::NAME, get_cf_options())
+        );
+
+
+
 
         let cfs = vec![
-            meta_cf_descriptor,
-            data_cf_descriptor,
-            erasure_cf_descriptor,
-            erasure_meta_cf_descriptor,
-            orphans_cf_descriptor,
-            root_cf_descriptor,
+            metainfo_column_group_info,
+            data_column_group_info,
+            erasure_column_group_info,
+            erasure_metainfo_column_group_info,
+            singleton_column_group_info,
+            genesis_column_group_info,
         ];
 
         // Open the database
-        let db = Rocks(DB::open_cf_descriptors(&db_options, path, cfs)?);
+        let db = RocksDB(DB::open_cf_descriptors(&db_options, path, cfs)?);
 
         Ok(db)
     }
 
     fn columns(&self) -> Vec<&'static str> {
-        use crate::block_buffer_pool::db::columns::{Coding, Data, ErasureMeta, Orphans, Root, SlotMeta};
+        use crate::block_buffer_pool::db::columns::{Coding, Data, ErasureMeta, Orphans, BaseColumn, SlotMeta};
 
         vec![
             Coding::NAME,
             ErasureMeta::NAME,
             Data::NAME,
             Orphans::NAME,
-            Root::NAME,
+            BaseColumn::NAME,
             SlotMeta::NAME,
         ]
     }
@@ -130,8 +150,8 @@ impl Backend for Rocks {
     }
 }
 
-impl Column<Rocks> for cf::Coding {
-    const NAME: &'static str = super::ERASURE_CF;
+impl Column<RocksDB> for cf::Coding {
+    const NAME: &'static str = super::ERASURE_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn key(index: (u64, u64)) -> Vec<u8> {
@@ -143,8 +163,8 @@ impl Column<Rocks> for cf::Coding {
     }
 }
 
-impl Column<Rocks> for cf::Data {
-    const NAME: &'static str = super::DATA_CF;
+impl Column<RocksDB> for cf::Data {
+    const NAME: &'static str = super::DATA_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn key((slot, index): (u64, u64)) -> Vec<u8> {
@@ -161,8 +181,8 @@ impl Column<Rocks> for cf::Data {
     }
 }
 
-impl Column<Rocks> for cf::Orphans {
-    const NAME: &'static str = super::ORPHANS_CF;
+impl Column<RocksDB> for cf::Orphans {
+    const NAME: &'static str = super::SINGLETON_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Vec<u8> {
@@ -176,12 +196,12 @@ impl Column<Rocks> for cf::Orphans {
     }
 }
 
-impl TypedColumn<Rocks> for cf::Orphans {
+impl TypedColumn<RocksDB> for cf::Orphans {
     type Type = bool;
 }
 
-impl Column<Rocks> for cf::Root {
-    const NAME: &'static str = super::ROOT_CF;
+impl Column<RocksDB> for cf::BaseColumn {
+    const NAME: &'static str = super::GENESIS_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Vec<u8> {
@@ -195,12 +215,12 @@ impl Column<Rocks> for cf::Root {
     }
 }
 
-impl TypedColumn<Rocks> for cf::Root {
+impl TypedColumn<RocksDB> for cf::BaseColumn {
     type Type = bool;
 }
 
-impl Column<Rocks> for cf::SlotMeta {
-    const NAME: &'static str = super::META_CF;
+impl Column<RocksDB> for cf::SlotMeta {
+    const NAME: &'static str = super::METAINFO_COLUMN_GROUP;
     type Index = u64;
 
     fn key(slot: u64) -> Vec<u8> {
@@ -214,12 +234,12 @@ impl Column<Rocks> for cf::SlotMeta {
     }
 }
 
-impl TypedColumn<Rocks> for cf::SlotMeta {
+impl TypedColumn<RocksDB> for cf::SlotMeta {
     type Type = super::SlotMeta;
 }
 
-impl Column<Rocks> for cf::ErasureMeta {
-    const NAME: &'static str = super::ERASURE_META_CF;
+impl Column<RocksDB> for cf::ErasureMeta {
+    const NAME: &'static str = super::ERASURE_METAINFO_COLUMN_GROUP;
     type Index = (u64, u64);
 
     fn index(key: &[u8]) -> (u64, u64) {
@@ -237,11 +257,11 @@ impl Column<Rocks> for cf::ErasureMeta {
     }
 }
 
-impl TypedColumn<Rocks> for cf::ErasureMeta {
+impl TypedColumn<RocksDB> for cf::ErasureMeta {
     type Type = super::ErasureMeta;
 }
 
-impl DbCursor<Rocks> for DBRawIterator {
+impl DbCursor<RocksDB> for DBRawIterator {
     fn valid(&self) -> bool {
         DBRawIterator::valid(self)
     }
@@ -267,7 +287,7 @@ impl DbCursor<Rocks> for DBRawIterator {
     }
 }
 
-impl IWriteBatch<Rocks> for RWriteBatch {
+impl IWriteBatch<RocksDB> for RWriteBatch {
     fn put_cf(&mut self, cf: ColumnFamily, key: &[u8], value: &[u8]) -> Result<()> {
         RWriteBatch::put_cf(self, cf, key, value)?;
         Ok(())

@@ -39,7 +39,7 @@ impl SlotMeta {
         // Should never happen
         if self.consumed > self.last_index + 1 {
             datapoint!(
-                "blocktree_error",
+                "block_buffer_pool_error",
                 (
                     "error",
                     format!(

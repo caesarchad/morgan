@@ -1654,7 +1654,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"total_peers\") as \"total peers\" FROM \"$testnet\".\"autogen\".\"vote_stage-peer_count\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -1857,7 +1857,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"duration_ms\") FROM \"$testnet\".\"autogen\".\"validator-confirmation\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time(1s) FILL(0)\n",
@@ -1973,7 +1973,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT \"request_amount\" FROM \"$testnet\".\"autogen\".\"drone-airdrop\" WHERE $timeFilter fill(null)\n\n\n\n",
@@ -2090,7 +2090,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"duration_ms\") / 1000 AS \".\"  FROM  \"$testnet\".\"autogen\".\"thinclient\" WHERE $timeFilter GROUP BY time($__interval), \"op\" \n\n\n\n\n\n",
@@ -2342,7 +2342,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(*) FROM \"$testnet\".\"autogen\".\"local-deploy\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)\n\n\n\n\n\n\n\n\n",
@@ -2610,7 +2610,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"one\") as \".\" FROM \"$testnet\".\"autogen\".\"panic\" WHERE $timeFilter   GROUP BY time($__interval), \"program\" fill(null)\n\n\n\n",
@@ -2924,7 +2924,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"killed\") as \".\" FROM \"$testnet\".\"autogen\".\"oom-killer\" WHERE $timeFilter   GROUP BY time($__interval), \"victim\", \"hostname\" fill(null)\n\n\n\n",
@@ -3134,7 +3134,7 @@
           "hide": false,
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT host_id,error FROM \"$testnet\".\"autogen\".\"blocktree_error\"  WHERE $timeFilter ORDER BY time DESC ",
+          "query": "SELECT host_id,error FROM \"$testnet\".\"autogen\".\"block_buffer_pool_error\"  WHERE $timeFilter ORDER BY time DESC ",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "table",
@@ -3596,7 +3596,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT balance FROM  \"$testnet\".\"autogen\".\"bench-tps-lamport_balance\" WHERE $timeFilter fill(null)\n\n\n\n",
@@ -3712,7 +3712,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT \"duration\" / 1000 as \"Generation Time\" FROM  \"$testnet\".\"autogen\".\"bench-tps-generate_txs\" WHERE $timeFilter fill(null)\n\n\n\n\n",
@@ -4268,7 +4268,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"window receive\" FROM \"$testnet\".\"autogen\".\"streamer-recv_window-recv\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)\n",
@@ -4421,7 +4421,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"retransmit\" FROM \"$testnet\".\"autogen\".\"streamer-recv_window-retransmit\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)\n",
@@ -4617,7 +4617,7 @@
           ],
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT last(\"repair-ix\") AS \"repair-ix\" FROM \"$testnet\".\"autogen\".\"cluster_info-repair\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT last(\"repair-ix\") AS \"repair-ix\" FROM \"$testnet\".\"autogen\".\"node_group_info-repair\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "C",
           "resultFormat": "time_series",
@@ -4654,7 +4654,7 @@
           ],
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT last(\"repair-slot\") AS \"repair-slot\" FROM \"$testnet\".\"autogen\".\"cluster_info-repair\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT last(\"repair-slot\") AS \"repair-slot\" FROM \"$testnet\".\"autogen\".\"node_group_info-repair\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -4773,7 +4773,7 @@
           ],
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT last(\"repair-orphan\") AS \"slot\" FROM \"$testnet\".\"autogen\".\"cluster_info-repair_orphan\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT last(\"repair-orphan\") AS \"slot\" FROM \"$testnet\".\"autogen\".\"node_group_info-repair_orphan\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "C",
           "resultFormat": "time_series",
@@ -4887,7 +4887,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"sigverify-recv\" FROM \"$testnet\".\"autogen\".\"sigverify_stage-packets_received\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)\n",
@@ -5264,7 +5264,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"retransmit\" FROM \"$testnet\".\"autogen\".\"retransmit-stage\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -5302,7 +5302,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"replicate\" FROM \"$testnet\".\"autogen\".\"replicate-stage\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -5340,7 +5340,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"retransmit_q\" FROM \"$testnet\".\"autogen\".\"retransmit-queue\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -5378,7 +5378,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"recv_window\" FROM \"$testnet\".\"autogen\".\"recv-window\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -5495,7 +5495,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") AS \"sigverify\" FROM \"$testnet\".\"autogen\".\"sigverify_stage-time_ms\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)\n",
@@ -5841,7 +5841,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"count\") FROM \"$testnet\".\"autogen\".\"bank-forks_set_root_ms\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -5880,7 +5880,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"squash_accounts_ms\")  AS \"squash_account\" FROM \"$testnet\".\"autogen\".\"locktower-observed\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -5919,7 +5919,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"squash_cache_ms\")  AS \"squash_cache\" FROM \"$testnet\".\"autogen\".\"locktower-observed\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -6036,7 +6036,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT last(\"consumed\") AS \"validator\" FROM \"$testnet\".\"autogen\".\"window-stage\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -6074,7 +6074,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT last(\"transmit-index\") AS \"leader\" FROM \"$testnet\".\"autogen\".\"broadcast-service\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)",
@@ -6196,7 +6196,7 @@
           ],
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT last(\"repair-highest-slot\") AS \"slot\" FROM \"$testnet\".\"autogen\".\"cluster_info-repair_highest\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT last(\"repair-highest-slot\") AS \"slot\" FROM \"$testnet\".\"autogen\".\"node_group_info-repair_highest\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "C",
           "resultFormat": "time_series",
@@ -6233,7 +6233,7 @@
           ],
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT last(\"repair-highest-ix\") AS \"ix\" FROM \"$testnet\".\"autogen\".\"cluster_info-repair_highest\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT last(\"repair-highest-ix\") AS \"ix\" FROM \"$testnet\".\"autogen\".\"node_group_info-repair_highest\" WHERE host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -6361,7 +6361,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT sum(\"count\") FROM \"$testnet\".\"autogen\".\"banking_stage-buffered_packets\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -6681,7 +6681,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT last(\"latest\") - last(\"root\") FROM \"$testnet\".\"autogen\".\"locktower-vote\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -6841,7 +6841,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT last(\"root\") FROM \"$testnet\".\"autogen\".\"locktower-vote\" WHERE  host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -7000,7 +7000,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT last(\"count\") FROM \"$testnet\".\"autogen\".\"replay_stage-new_leader\" WHERE   host_id =~ /$hostid/ AND $timeFilter GROUP BY time($__interval)",
@@ -7132,7 +7132,7 @@
             }
           ],
           "hide": false,
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"packets_received\") as \"packets_received\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE  hostname =~ /$hostid/ AND $timeFilter   GROUP BY time(5s) fill(null)\n\n\n\n",
@@ -7170,7 +7170,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"receive_errors\") as \"receive_errors\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE  hostname =~ /$hostid/ AND $timeFilter   GROUP BY time(5s) fill(null)\n\n\n\n",
@@ -7208,7 +7208,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"rcvbuf_errors\") as \"rcvbuf_errors\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE  hostname =~ /$hostid/ AND $timeFilter   GROUP BY time(5s) fill(null)\n\n\n\n",
@@ -7246,7 +7246,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"packets_sent\") as \"packets_sent\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE  hostname =~ /$hostid/ AND $timeFilter   GROUP BY time(5s) fill(null)\n\n\n\n",
@@ -7366,7 +7366,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"in_octets\") as \"recv\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE $timeFilter   GROUP BY time(1s) fill(null)\n\n\n\n",
@@ -7404,7 +7404,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT mean(\"out_octets\") as \"sent\" FROM \"$testnet\".\"autogen\".\"net-stats\" WHERE $timeFilter   GROUP BY time(1s) fill(null)\n\n\n\n",
@@ -7533,7 +7533,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "cluster_info-vote-count",
+          "measurement": "node_group_info-vote-count",
           "orderByTime": "ASC",
           "policy": "autogen",
           "query": "SELECT max(\"total_time_ms\") AS \"max\" FROM \"$testnet\".\"autogen\".\"sigverify_stage-total_verify_time\" WHERE $timeFilter GROUP BY time($__interval) FILL(0)\n\n",

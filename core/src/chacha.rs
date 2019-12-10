@@ -33,7 +33,7 @@ pub fn chacha_cbc_encrypt(input: &[u8], output: &mut [u8], key: &[u8], ivec: &mu
 }
 
 pub fn chacha_cbc_encrypt_ledger(
-    blocktree: &Arc<BlockBufferPool>,
+    block_buffer_pool: &Arc<BlockBufferPool>,
     slice: u64,
     out_path: &Path,
     ivec: &mut [u8; CHACHA_BLOCK_SIZE],
@@ -49,7 +49,7 @@ pub fn chacha_cbc_encrypt_ledger(
     let mut entry = slice;
 
     loop {
-        match blocktree.extract_objs_bytes(0, SLOTS_PER_SEGMENT - total_entries, &mut buffer, entry) {
+        match block_buffer_pool.extract_objs_bytes(0, SLOTS_PER_SEGMENT - total_entries, &mut buffer, entry) {
             Ok((num_entries, entry_len)) => {
                 debug!(
                     "chacha: encrypting slice: {} num_entries: {} entry_len: {}",
@@ -220,11 +220,11 @@ mod tests {
         let ledger_dir = "chacha_test_encrypt_file";
         let ledger_path = fetch_interim_bill_route(ledger_dir);
         let ticks_per_slot = 16;
-        let blocktree = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
+        let block_buffer_pool = Arc::new(BlockBufferPool::open_ledger_file(&ledger_path).unwrap());
         let out_path = Path::new("test_chacha_encrypt_file_output.txt.enc");
 
         let entries = make_tiny_deterministic_test_entries(32);
-        blocktree
+        block_buffer_pool
             .record_items(0, 0, 0, ticks_per_slot, &entries)
             .unwrap();
 
@@ -232,7 +232,7 @@ mod tests {
             "abcd1234abcd1234abcd1234abcd1234 abcd1234abcd1234abcd1234abcd1234
                             abcd1234abcd1234abcd1234abcd1234 abcd1234abcd1234abcd1234abcd1234"
         );
-        chacha_cbc_encrypt_ledger(&blocktree, 0, out_path, &mut key).unwrap();
+        chacha_cbc_encrypt_ledger(&block_buffer_pool, 0, out_path, &mut key).unwrap();
         let mut out_file = File::open(out_path).unwrap();
         let mut buf = vec![];
         let size = out_file.read_to_end(&mut buf).unwrap();

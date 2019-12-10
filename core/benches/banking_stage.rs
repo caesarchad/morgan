@@ -9,8 +9,8 @@ use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use morgan::treasury_stage::{create_test_recorder, BankingStage};
 use morgan::block_buffer_pool::{get_tmp_ledger_path, BlockBufferPool};
-use morgan::cluster_message::ClusterInfo;
-use morgan::cluster_message::Node;
+use morgan::node_group_info::NodeGroupInfo;
+use morgan::node_group_info::Node;
 use morgan::genesis_utils::{create_genesis_block, GenesisBlockInfo};
 use morgan::packet::to_packets_chunked;
 use morgan::water_clock_recorder::WorkingBankEntries;
@@ -56,11 +56,11 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
     let ledger_path = get_tmp_ledger_path!();
     let my_pubkey = Pubkey::new_rand();
     {
-        let blocktree = Arc::new(
+        let block_buffer_pool = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, waterclock_recorder, waterclock_service, _signal_receiver) =
-            create_test_recorder(&bank, &blocktree);
+            create_test_recorder(&bank, &block_buffer_pool);
 
         let tx = test_tx();
         let len = 4096;
@@ -81,7 +81,7 @@ fn bench_consume_buffered(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         waterclock_service.join().unwrap();
     }
-    let _unused = BlockBufferPool::destruct(&ledger_path);
+    let _unused = BlockBufferPool::remove_ledger_file(&ledger_path);
 }
 
 #[bench]
@@ -152,15 +152,15 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         .collect();
     let ledger_path = get_tmp_ledger_path!();
     {
-        let blocktree = Arc::new(
+        let block_buffer_pool = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, waterclock_recorder, waterclock_service, signal_receiver) =
-            create_test_recorder(&bank, &blocktree);
-        let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-        let cluster_info = Arc::new(RwLock::new(cluster_info));
+            create_test_recorder(&bank, &block_buffer_pool);
+        let node_group_info = NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+        let node_group_info = Arc::new(RwLock::new(node_group_info));
         let _banking_stage = BankingStage::new(
-            &cluster_info,
+            &node_group_info,
             &waterclock_recorder,
             verified_receiver,
             vote_receiver,
@@ -195,7 +195,7 @@ fn bench_banking_stage_multi_accounts(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         waterclock_service.join().unwrap();
     }
-    let _unused = BlockBufferPool::destruct(&ledger_path);
+    let _unused = BlockBufferPool::remove_ledger_file(&ledger_path);
 }
 
 #[bench]
@@ -278,15 +278,15 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
 
     let ledger_path = get_tmp_ledger_path!();
     {
-        let blocktree = Arc::new(
+        let block_buffer_pool = Arc::new(
             BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger"),
         );
         let (exit, waterclock_recorder, waterclock_service, signal_receiver) =
-            create_test_recorder(&bank, &blocktree);
-        let cluster_info = ClusterInfo::new_with_invalid_keypair(Node::new_localhost().info);
-        let cluster_info = Arc::new(RwLock::new(cluster_info));
+            create_test_recorder(&bank, &block_buffer_pool);
+        let node_group_info = NodeGroupInfo::new_with_invalid_keypair(Node::new_localhost().info);
+        let node_group_info = Arc::new(RwLock::new(node_group_info));
         let _banking_stage = BankingStage::new(
-            &cluster_info,
+            &node_group_info,
             &waterclock_recorder,
             verified_receiver,
             vote_receiver,
@@ -318,5 +318,5 @@ fn bench_banking_stage_multi_programs(bencher: &mut Bencher) {
         exit.store(true, Ordering::Relaxed);
         waterclock_service.join().unwrap();
     }
-    BlockBufferPool::destruct(&ledger_path).unwrap();
+    BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
 }

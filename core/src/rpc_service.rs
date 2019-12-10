@@ -2,7 +2,7 @@
 
 // use crate::bank_forks::BankForks;
 use crate::treasury_forks::BankForks;
-use crate::cluster_message::ClusterInfo;
+use crate::node_group_info::NodeGroupInfo;
 use crate::rpc::*;
 use crate::service::Service;
 use crate::storage_stage::StorageState;
@@ -24,7 +24,7 @@ pub struct JsonRpcService {
 
 impl JsonRpcService {
     pub fn new(
-        cluster_info: &Arc<RwLock<ClusterInfo>>,
+        node_group_info: &Arc<RwLock<NodeGroupInfo>>,
         rpc_addr: SocketAddr,
         storage_state: StorageState,
         config: JsonRpcConfig,
@@ -53,7 +53,7 @@ impl JsonRpcService {
         )));
         let request_processor_ = request_processor.clone();
 
-        let cluster_info = cluster_info.clone();
+        let node_group_info = node_group_info.clone();
         let exit_ = exit.clone();
 
         let thread_hdl = Builder::new()
@@ -66,7 +66,7 @@ impl JsonRpcService {
                 let server =
                     ServerBuilder::with_meta_extractor(io, move |_req: &hyper::Request<hyper::Body>| Meta {
                         request_processor: request_processor_.clone(),
-                        cluster_info: cluster_info.clone(),
+                        node_group_info: node_group_info.clone(),
                     }).threads(4)
                         .cors(DomainsValidation::AllowOnly(vec![
                             AccessControlAllowOrigin::Any,
@@ -181,7 +181,7 @@ mod tests {
         } = create_genesis_block(10_000);
         let exit = Arc::new(AtomicBool::new(false));
         let bank = Bank::new(&genesis_block);
-        let cluster_info = Arc::new(RwLock::new(ClusterInfo::new_with_invalid_keypair(
+        let node_group_info = Arc::new(RwLock::new(NodeGroupInfo::new_with_invalid_keypair(
             ContactInfo::default(),
         )));
         let rpc_addr = SocketAddr::new(
@@ -190,7 +190,7 @@ mod tests {
         );
         let bank_forks = Arc::new(RwLock::new(BankForks::new(bank.slot(), bank)));
         let rpc_service = JsonRpcService::new(
-            &cluster_info,
+            &node_group_info,
             rpc_addr,
             StorageState::default(),
             JsonRpcConfig::default(),

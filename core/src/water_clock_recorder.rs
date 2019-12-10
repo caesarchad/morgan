@@ -58,7 +58,7 @@ pub struct WaterClockRecorder {
     last_leader_tick: Option<u64>,
     max_last_leader_grace_ticks: u64,
     id: Pubkey,
-    blocktree: Arc<BlockBufferPool>,
+    block_buffer_pool: Arc<BlockBufferPool>,
     leader_schedule_cache: Arc<LeaderScheduleCache>,
     waterclock_config: Arc<WaterClockConfig>,
     ticks_per_slot: u64,
@@ -72,7 +72,7 @@ impl WaterClockRecorder {
                 &self.id,
                 bank.slot(),
                 &bank,
-                Some(&self.blocktree),
+                Some(&self.block_buffer_pool),
             );
             let (start_leader_at_tick, last_leader_tick) = Self::compute_leader_slot_ticks(
                 &next_leader_slot,
@@ -397,7 +397,7 @@ impl WaterClockRecorder {
         my_leader_slot_index: Option<u64>,
         ticks_per_slot: u64,
         id: &Pubkey,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         clear_bank_signal: Option<SyncSender<bool>>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         waterclock_config: &Arc<WaterClockConfig>,
@@ -427,7 +427,7 @@ impl WaterClockRecorder {
                 last_leader_tick,
                 max_last_leader_grace_ticks,
                 id: *id,
-                blocktree: blocktree.clone(),
+                block_buffer_pool: block_buffer_pool.clone(),
                 leader_schedule_cache: leader_schedule_cache.clone(),
                 ticks_per_slot,
                 waterclock_config: waterclock_config.clone(),
@@ -446,7 +446,7 @@ impl WaterClockRecorder {
         my_leader_slot_index: Option<u64>,
         ticks_per_slot: u64,
         id: &Pubkey,
-        blocktree: &Arc<BlockBufferPool>,
+        block_buffer_pool: &Arc<BlockBufferPool>,
         leader_schedule_cache: &Arc<LeaderScheduleCache>,
         waterclock_config: &Arc<WaterClockConfig>,
     ) -> (Self, Receiver<WorkingBankEntries>) {
@@ -457,7 +457,7 @@ impl WaterClockRecorder {
             my_leader_slot_index,
             ticks_per_slot,
             id,
-            blocktree,
+            block_buffer_pool,
             None,
             leader_schedule_cache,
             waterclock_config,
@@ -480,7 +480,7 @@ mod tests {
         let prev_hash = Hash::default();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
@@ -490,7 +490,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -499,7 +499,7 @@ mod tests {
             assert_eq!(waterclock_recorder.tick_cache[0].1, 1);
             assert_eq!(waterclock_recorder.tick_height, 1);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
@@ -507,7 +507,7 @@ mod tests {
         let prev_hash = Hash::default();
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
 
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
@@ -517,7 +517,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -527,14 +527,14 @@ mod tests {
             assert_eq!(waterclock_recorder.tick_cache[1].1, 2);
             assert_eq!(waterclock_recorder.tick_height, 2);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_reset_clears_cache() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
@@ -543,7 +543,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -552,14 +552,14 @@ mod tests {
             waterclock_recorder.reset(0, Hash::default(), 0, Some(4), DEFAULT_TICKS_PER_SLOT);
             assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_clear() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -571,7 +571,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -586,14 +586,14 @@ mod tests {
             waterclock_recorder.clear_bank();
             assert!(waterclock_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_tick_sent_after_min() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -605,7 +605,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -632,14 +632,14 @@ mod tests {
             assert_eq!(bank_.slot(), bank.slot());
             assert!(waterclock_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_tick_sent_upto_and_including_max() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -651,7 +651,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -676,14 +676,14 @@ mod tests {
             let (_, e) = entry_receiver.recv().expect("recv 1");
             assert_eq!(e.len(), 3);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_record_to_early() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -695,7 +695,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -714,14 +714,14 @@ mod tests {
                 .is_err());
             assert!(entry_receiver.try_recv().is_err());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_record_bad_slot() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -733,7 +733,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -754,14 +754,14 @@ mod tests {
                 Err(Error::WaterClockRecorderErr(WaterClockRecorderErr::MaxHeightReached))
             );
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_record_at_min_passes() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -773,7 +773,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -801,14 +801,14 @@ mod tests {
             let (_b, e) = entry_receiver.recv().expect("recv 2");
             assert!(!e[0].0.is_tick());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_record_at_max_fails() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -820,7 +820,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -845,14 +845,14 @@ mod tests {
             assert!(e[0].0.is_tick());
             assert!(e[1].0.is_tick());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_cache_on_disconnect() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -864,7 +864,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -883,14 +883,14 @@ mod tests {
             assert!(waterclock_recorder.working_bank.is_none());
             assert_eq!(waterclock_recorder.tick_cache.len(), 3);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_reset_current() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
@@ -899,7 +899,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -916,14 +916,14 @@ mod tests {
             );
             assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_reset_with_cached() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
@@ -932,7 +932,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -948,14 +948,14 @@ mod tests {
             );
             assert_eq!(waterclock_recorder.tick_cache.len(), 0);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_reset_to_new_value() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let (mut waterclock_recorder, _entry_receiver) = WaterClockRecorder::new(
                 0,
@@ -964,7 +964,7 @@ mod tests {
                 Some(4),
                 DEFAULT_TICKS_PER_SLOT,
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -978,14 +978,14 @@ mod tests {
             waterclock_recorder.tick();
             assert_eq!(waterclock_recorder.tick_height, 2);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_reset_clear_bank() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -996,7 +996,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1010,14 +1010,14 @@ mod tests {
             waterclock_recorder.reset(1, hash(b"hello"), 0, Some(4), ticks_per_slot);
             assert!(waterclock_recorder.working_bank.is_none());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     pub fn test_clear_signal() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -1029,7 +1029,7 @@ mod tests {
                 None,
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 Some(sender),
                 &Arc::new(LeaderScheduleCache::default()),
                 &Arc::new(WaterClockConfig::default()),
@@ -1038,14 +1038,14 @@ mod tests {
             waterclock_recorder.clear_bank();
             assert!(receiver.try_recv().is_ok());
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_waterclock_recorder_reset_start_slot() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let ticks_per_slot = 5;
             let GenesisBlockInfo {
@@ -1062,7 +1062,7 @@ mod tests {
                 Some(4),
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1089,14 +1089,14 @@ mod tests {
             // Make sure the starting slot is updated
             assert_eq!(waterclock_recorder.start_slot(), end_slot);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_reached_leader_tick() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -1108,7 +1108,7 @@ mod tests {
                 None,
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );
@@ -1251,14 +1251,14 @@ mod tests {
             // We are not the leader, as expected
             assert_eq!(waterclock_recorder.reached_leader_tick().0, false);
         }
-        BlockBufferPool::destruct(&ledger_path).unwrap();
+        BlockBufferPool::remove_ledger_file(&ledger_path).unwrap();
     }
 
     #[test]
     fn test_would_be_leader_soon() {
         let ledger_path = get_tmp_ledger_path!();
         {
-            let blocktree =
+            let block_buffer_pool =
                 BlockBufferPool::open_ledger_file(&ledger_path).expect("Expected to be able to open database ledger");
             let GenesisBlockInfo { genesis_block, .. } = create_genesis_block(2);
             let bank = Arc::new(Bank::new(&genesis_block));
@@ -1270,7 +1270,7 @@ mod tests {
                 None,
                 bank.ticks_per_slot(),
                 &Pubkey::default(),
-                &Arc::new(blocktree),
+                &Arc::new(block_buffer_pool),
                 &Arc::new(LeaderScheduleCache::new_from_bank(&bank)),
                 &Arc::new(WaterClockConfig::default()),
             );

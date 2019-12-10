@@ -2,15 +2,15 @@ use super::*;
 
 pub struct RootedSlotIterator<'a> {
     next_slots: Vec<u64>,
-    blocktree: &'a super::BlockBufferPool,
+    block_buffer_pool: &'a super::BlockBufferPool,
 }
 
 impl<'a> RootedSlotIterator<'a> {
-    pub fn new(start_slot: u64, blocktree: &'a super::BlockBufferPool) -> Result<Self> {
-        if blocktree.is_base(start_slot) {
+    pub fn new(start_slot: u64, block_buffer_pool: &'a super::BlockBufferPool) -> Result<Self> {
+        if block_buffer_pool.is_base(start_slot) {
             Ok(Self {
                 next_slots: vec![start_slot],
-                blocktree,
+                block_buffer_pool,
             })
         } else {
             Err(Error::BlockBufferPoolError(BlockBufferPoolError::SlotNotRooted))
@@ -26,12 +26,12 @@ impl<'a> Iterator for RootedSlotIterator<'a> {
         let rooted_slot = self
             .next_slots
             .iter()
-            .find(|x| self.blocktree.is_base(**x))
+            .find(|x| self.block_buffer_pool.is_base(**x))
             .cloned();
 
         rooted_slot.map(|rooted_slot| {
             let slot_meta = self
-                .blocktree
+                .block_buffer_pool
                 .meta_info(rooted_slot)
                 .expect("Database failure, couldnt fetch SlotMeta")
                 .expect("SlotMeta in iterator didn't exist");
@@ -45,16 +45,16 @@ impl<'a> Iterator for RootedSlotIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block_buffer_pool_processor::tests::fill_blocktree_slot_with_ticks;
+    use crate::block_buffer_pool_processor::tests::fill_block_buffer_pool_slot_with_ticks;
 
     #[test]
     fn test_rooted_slot_iterator() {
-        let blocktree_path = fetch_interim_bill_route("test_rooted_slot_iterator");
-        let blocktree = BlockBufferPool::open_ledger_file(&blocktree_path).unwrap();
-        blocktree.config_base(0, 0).unwrap();
+        let block_buffer_pool_path = fetch_interim_bill_route("test_rooted_slot_iterator");
+        let block_buffer_pool = BlockBufferPool::open_ledger_file(&block_buffer_pool_path).unwrap();
+        block_buffer_pool.config_base(0, 0).unwrap();
         let ticks_per_slot = 5;
         /*
-            Build a blocktree in the ledger with the following fork structure:
+            Build a block_buffer_pool in the ledger with the following fork structure:
 
                  slot 0
                    |
@@ -80,8 +80,8 @@ mod tests {
                     slot - 1
                 }
             };
-            let last_entry_hash = fill_blocktree_slot_with_ticks(
-                &blocktree,
+            let last_entry_hash = fill_block_buffer_pool_slot_with_ticks(
+                &block_buffer_pool,
                 ticks_per_slot,
                 slot,
                 parent,
@@ -95,16 +95,16 @@ mod tests {
 
         // Fork 2, ending at slot 4
         let _ =
-            fill_blocktree_slot_with_ticks(&blocktree, ticks_per_slot, 4, fork_point, fork_hash);
+            fill_block_buffer_pool_slot_with_ticks(&block_buffer_pool, ticks_per_slot, 4, fork_point, fork_hash);
 
         // Set a root
-        blocktree.config_base(3, 0).unwrap();
+        block_buffer_pool.config_base(3, 0).unwrap();
 
         // Trying to get an iterator on a different fork will error
-        assert!(RootedSlotIterator::new(4, &blocktree).is_err());
+        assert!(RootedSlotIterator::new(4, &block_buffer_pool).is_err());
 
         // Trying to get an iterator on any slot on the root fork should succeed
-        let result: Vec<_> = RootedSlotIterator::new(3, &blocktree)
+        let result: Vec<_> = RootedSlotIterator::new(3, &block_buffer_pool)
             .unwrap()
             .into_iter()
             .map(|(slot, _)| slot)
@@ -112,7 +112,7 @@ mod tests {
         let expected = vec![3];
         assert_eq!(result, expected);
 
-        let result: Vec<_> = RootedSlotIterator::new(0, &blocktree)
+        let result: Vec<_> = RootedSlotIterator::new(0, &block_buffer_pool)
             .unwrap()
             .into_iter()
             .map(|(slot, _)| slot)
@@ -120,7 +120,7 @@ mod tests {
         let expected = vec![0, 1, 2, 3];
         assert_eq!(result, expected);
 
-        drop(blocktree);
-        BlockBufferPool::destruct(&blocktree_path).expect("Expected successful database destruction");
+        drop(block_buffer_pool);
+        BlockBufferPool::remove_ledger_file(&block_buffer_pool_path).expect("Expected successful database destruction");
     }
 }
